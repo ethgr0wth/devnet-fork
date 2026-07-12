@@ -281,7 +281,18 @@ def main():
 
         MOCK_TOKEN = "aias-mock-session-token-abc123"
         V1_USER = {"id": "v1-user-mark", "email": "mark@interchained.org",
-                   "display_name": "Mark", "role": "super_admin", "plan": "pro"}
+                   "display_name": "Mark", "role": "super_admin", "plan": "pro",
+                   "active_environment_id": "env-prod-1"}
+        V1_ENVS = {"environments": [
+            {"id": "env-prod-1", "name": "Production"},
+            {"id": "env-stage-2", "name": "Staging"}]}
+        V1_WORKSPACES = {"workspaces": [
+            {"id": "ws-acme-1", "title": "Acme Corp — onboarding",
+             "environment_id": "env-prod-1",
+             "needs_human_attention": True, "message_count": 12},
+            {"id": "ws-beta-2", "title": "Beta support",
+             "environment_id": "env-prod-1",
+             "needs_human_attention": False, "message_count": 3}]}
 
         class MockAias(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -310,14 +321,19 @@ def main():
                 self._json(404, {"detail": "nope"})
 
             def do_GET(self):
-                if self.path.startswith("/api/user/me"):
-                    if self.headers.get("X-Session-Token") == MOCK_TOKEN:
-                        return self._json(200, V1_USER)
+                if self.headers.get("X-Session-Token") != MOCK_TOKEN:
                     return self._json(401, {"detail": "no session"})
+                if self.path.startswith("/api/user/me"):
+                    return self._json(200, V1_USER)
+                if self.path.startswith("/api/environments"):
+                    return self._json(200, V1_ENVS)
+                if self.path.startswith("/api/user/workspaces"):
+                    return self._json(200, self.server.ws_payload)  # type: ignore
                 self._json(404, {"detail": "nope"})
 
         mport = _free_port()
         mock = ThreadingHTTPServer(("127.0.0.1", mport), MockAias)
+        mock.ws_payload = V1_WORKSPACES  # type: ignore
         threading.Thread(target=mock.serve_forever, daemon=True).start()
 
         fport = _free_port()
@@ -371,6 +387,61 @@ def main():
             s, b = req(fbase, "POST", "/api/posts", {"content": "x"},
                        {"X-Auth-Hash": "garbage-token-zz"})
             ok("H8 garbage token rejected", s == 401)
+            # ── I. the bridge: v1 workspaces ARE devnet communities ────
+            print("I. the bridge (workspace ≡ community, environment ≡ ecosystem)")
+            def fnql(q):
+                st, bb = req(nbase, "POST", "/v1/databases/devnet_fed/query",
+                             {"nql": q}, headers=NEDB_AUTH)
+                return bb.get("rows", []) if st == 200 else []
+
+            s, b = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
+            ok("I1 sync succeeds",
+               s == 200 and b.get("success") is True, str(b)[:160])
+            ok("I2 ecosystems ← environments (2, same ids)",
+               b.get("ecosystems") == 2
+               and any((r.get("value") or "").find("env-prod-1") >= 0
+                       for r in fnql('FROM ecosystem LIMIT 50')
+                       if r.get("rtype") == "string"))
+            ok("I3 communities created under the SAME workspace ids",
+               b.get("communities_created") == 2)
+            graw = fnql('FROM group WHERE key = "group:ws-acme-1"')
+            gdoc = json.loads(graw[0]["value"]) if graw and graw[0].get("value") else {}
+            ok("I4 twin is born native (origin, approved, eco, attention)",
+               gdoc.get("origin") == "aias_v1"
+               and gdoc.get("status") == "approved"
+               and gdoc.get("ecosystem_id") == "env-prod-1"
+               and gdoc.get("needs_attention") is True, str(gdoc)[:160])
+            ok("I5 metadata only — no message content anywhere in the twin",
+               "message" not in json.dumps(gdoc).lower()
+               or gdoc.get("origin") == "aias_v1" and "content" not in gdoc)
+            s2, b2 = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
+            ok("I6 idempotent re-sync (0 created, 2 updated)",
+               b2.get("communities_created") == 0
+               and b2.get("communities_updated") == 2, str(b2)[:120])
+            s3, gl = req(fbase, "GET", "/api/groups?ecosystem_id=env-prod-1",
+                         None, FH)
+            ok("I7 twins appear in the normal Communities list",
+               s3 == 200 and "ws-acme-1" in json.dumps(gl))
+            # archival: v1 stops listing ws-beta-2
+            mock.ws_payload = {"workspaces": V1_WORKSPACES["workspaces"][:1]}  # type: ignore
+            s4, b4 = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
+            ok("I8 vanished workspace → twin archived (content preserved)",
+               b4.get("archived") == 1, str(b4)[:120])
+            # never-repurpose guard: a LOCAL non-twin group already owns the
+            # id v1 tries to bridge — write it through the shim (real app
+            # write path), then sync must refuse to overwrite it.
+            sc_fed = DevnetRedisOnNedb(NedbdClient(base=nbase,
+                                                   token=BOARD_TOKEN,
+                                                   db="devnet_fed"))
+            sc_fed.set("group:ws-native-x", json.dumps(
+                {"id": "ws-native-x", "name": "native-owned",
+                 "status": "approved"}))
+            mock.ws_payload = {"workspaces": [  # type: ignore
+                {"id": "ws-native-x", "title": "Impostor",
+                 "environment_id": "env-prod-1"}]}
+            s5, b5 = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
+            ok("I9 never-repurpose guard (conflict counted, doc untouched)",
+               b5.get("conflicts", 0) >= 1, str(b5)[:120])
         finally:
             if fed.poll() is None:
                 fed.send_signal(signal.SIGTERM)
