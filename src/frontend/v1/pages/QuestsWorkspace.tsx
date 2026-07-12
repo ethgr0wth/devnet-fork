@@ -2738,13 +2738,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   };
 
   const renderChatPanel = (compact: boolean = false) => (
-    <div className="flex flex-col h-full overflow-hidden">
+    // Anchored to the nearest positioned ancestor (both call sites are
+    // `relative` with a definite height) so the chat column can never
+    // inherit a broken percentage chain — it always fills its tab exactly.
+    <div className="absolute inset-0 flex flex-col overflow-hidden">
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
       >
-        <div className={`space-y-${compact ? "3" : "4"} p-${compact ? "3" : "4"} min-w-0 max-w-full overflow-hidden`}>
+        <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
@@ -3099,7 +3102,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`p-${compact ? "3" : "4"} border-t border-border space-y-2`}>
+      <div className={`${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3243,7 +3246,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
   if (isMobile) {
     return (
-      <div className="bg-background flex flex-col" style={{ height: "100dvh" }}>
+      <div className="bg-background flex flex-col h-full min-h-0">
         <header className="glass-header flex-shrink-0 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
           <div className="flex items-center justify-between px-3 py-2 relative z-10">
@@ -3953,8 +3956,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <ResizableHandle />
 
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="h-full flex flex-col bg-background/50 min-w-0">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+            <div className="h-full min-h-0 flex flex-col bg-background/50 min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
                 <TabsList className="border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
                   <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
                     <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
@@ -3983,7 +3986,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </TabsTrigger>
                 </TabsList>
 
-                  <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
+                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative">
                     {renderChatPanel()}
                   </TabsContent>
 

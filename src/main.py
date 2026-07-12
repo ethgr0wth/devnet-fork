@@ -501,12 +501,31 @@ async def bridge_sync_workspaces(request: Request,
     envs = envs_body.get("environments") or (
         envs_body if isinstance(envs_body, list) else [])
 
-    ws_body = await _bridge_upstream(token, "/api/user/workspaces?limit=100")
-    if ws_body is None:
-        return JSONResponse({"success": False,
-                             "error": "AiAS production unreachable."},
-                            status_code=502)
-    workspaces = ws_body.get("workspaces") or []
+    # Paginated pull — upstream caps at 100 per page. Pull up to 5 pages
+    # (500 workspaces) per pass to stay inside the governor's budget. If a
+    # LATER page fails we keep what we got but must NOT archive: an
+    # incomplete listing would make missing workspaces look deleted.
+    workspaces = []
+    complete_pull = True
+    ws_offset = 0
+    for _ in range(5):
+        ws_body = await _bridge_upstream(
+            token, f"/api/user/workspaces?limit=100&offset={ws_offset}")
+        if ws_body is None:
+            if ws_offset == 0:
+                return JSONResponse({"success": False,
+                                     "error": "AiAS production unreachable."},
+                                    status_code=502)
+            complete_pull = False
+            break
+        page = ws_body.get("workspaces") or []
+        workspaces.extend(page)
+        if not page or not ws_body.get("has_more"):
+            break
+        ws_offset += len(page)
+    else:
+        # 5 full pages and upstream still reports more — listing is truncated.
+        complete_pull = False
 
     now = datetime.utcnow()
     counts = {"ecosystems": 0, "communities_created": 0,
@@ -602,8 +621,9 @@ async def bridge_sync_workspaces(request: Request,
 
     # ── archival: twins this user synced before that v1 no longer lists ──
     # (active-env scope: only archive twins that BELONG to the active env,
-    # so rooms from other environments survive until you sync there.)
-    for gone in (prev_ids - seen_ids):
+    # so rooms from other environments survive until you sync there.
+    # Skipped entirely on a partial pull — see pagination above.)
+    for gone in (prev_ids - seen_ids) if complete_pull else set():
         raw = redis_client.get(f"group:{gone}")
         if not raw:
             continue
@@ -616,6 +636,7 @@ async def bridge_sync_workspaces(request: Request,
             counts["archived"] += 1
 
     return JSONResponse({"success": True, **counts,
+                         "complete": complete_pull,
                          "active_environment": active_env})
 
 
@@ -3948,6 +3969,8 @@ async def list_groups(x_auth_hash: Optional[str] = Header(None), ecosystem_id: O
         group_data = redis_client.get(f"group:{gid}")
         if group_data:
             group = json.loads(str(group_data))
+            if group.get("status") == "archived":
+                continue  # bridge-archived twins leave the list (deep links still resolve)
             if group.get("ecosystem_id", DEVONE_ECOSYSTEM_ID) != eco_filter:
                 continue
             is_private = group.get("privacy") == "private"
