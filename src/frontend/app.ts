@@ -3656,10 +3656,14 @@ class DevNetwork {
   }
 
   private showAiosDesktop(initialApp?: string): void {
-    this.bridgeSync();
     unmountAios();
     this.setActiveNav("nav-aios-desktop");
     this._currentView = "aios";
+    // Bridge sync is a background reconcile, not a paint dependency — and it
+    // fires the single heaviest upstream call (workspaces?limit=100). Defer
+    // it well past first paint so the desktop and its light briefing render
+    // first and never queue behind it upstream. (Governed server-side too.)
+    setTimeout(() => this.bridgeSync(), 4000);
     void mountAios(this.container, {
       displayName: this.appState.user?.displayName || "there",
       initialApp,

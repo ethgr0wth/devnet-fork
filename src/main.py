@@ -158,6 +158,13 @@ except ImportError:  # script-style execution with src/ on sys.path
     import storage as _storage
 redis_client = _storage.make_client()
 
+# Upstream governor: cap concurrent calls to aias + circuit-break when it's
+# sick (see upstream_governor.py — the 2026-07-12 single-worker freeze).
+try:
+    from src.upstream_governor import governor, UpstreamDown
+except ImportError:
+    from upstream_governor import governor, UpstreamDown
+
 AUTH_SALT = os.environ.get("AUTH_SALT", "devnetwork_professional_networking_salt_2026")
 
 GEPPETTO_ID = "geppetto-system-bot"
@@ -459,9 +466,15 @@ def _slugify(text: str, fallback: str) -> str:
 
 async def _bridge_upstream(token: str, path: str):
     try:
-        r = await _aias_ahttp.get(path, headers={"X-Session-Token": token})
+        async with governor.slot():
+            r = await _aias_ahttp.get(path, headers={"X-Session-Token": token})
+            governor.record(True)  # server answered (any status) → not down
         return (r.json() if r.content else {}) if r.status_code == 200 else None
+    except UpstreamDown as e:
+        print(f"[bridge] upstream governed on {path}: {e.reason}")
+        return None
     except Exception as e:
+        governor.record(False)  # transport failure → trip the breaker
         print(f"[bridge] upstream error on {path}: {type(e).__name__}")
         return None
 
@@ -7018,11 +7031,23 @@ async def v1_same_origin_proxy(v1_path: str, request: Request):
     body = await request.body()
 
     try:
-        upstream = _aias_ahttp.build_request(
-            request.method, url, headers=fwd_headers,
-            content=body if body else None)
-        resp = await _aias_ahttp.send(upstream, stream=True)
+        # send(stream=True) returns once aias has PRODUCED the response (it
+        # buffers non-streaming bodies), so the slot covers the expensive
+        # server-side work; the body drain afterward is just a ready buffer.
+        async with governor.slot():
+            upstream = _aias_ahttp.build_request(
+                request.method, url, headers=fwd_headers,
+                content=body if body else None)
+            resp = await _aias_ahttp.send(upstream, stream=True)
+        governor.record(True)
+    except UpstreamDown as e:
+        # aias is known-saturated/down — fail fast, add NO new socket to it.
+        print(f"[v1proxy] governed {url}: {e.reason}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AiAS upstream busy — backing off ({e.reason})")
     except Exception as e:
+        governor.record(False)
         print(f"[v1proxy] upstream error on {url}: {type(e).__name__}: {e}")
         # Exception CLASS in the detail: the browser network tab then tells
         # the whole story (ReadTimeout = upstream hanging, ConnectError =
