@@ -226,27 +226,40 @@ function useBriefing(): BriefingData | null {
   const [data, setData] = useState<BriefingData | null>(null);
   useEffect(() => {
     let live = true;
+    // POLITE POLLING (learned 2026-07-12, the day the desktop piled onto a
+    // dying upstream): never stack a tick on an in-flight pull, and back off
+    // exponentially while v1 is failing so a downed production API gets
+    // silence to recover in, not a stampede.
+    let inFlight = false;
+    let failStreak = 0;
+    let skipTicks = 0;
     const pull = async () => {
+      if (inFlight) return;
+      if (skipTicks > 0) { skipTicks -= 1; return; }
+      inFlight = true;
+      let v1ok = true;
       const out: BriefingData = { attention: [], unreadPings: 0, usagePct: null, tokensUsed: null, wsCount: 0 };
       // v1 production (federated): workspaces needing a human + usage
       try {
         const r = await aias.json<any>("/api/user/workspaces?limit=10");
+        if (!r.ok) v1ok = false;
         const list = r.data?.workspaces || [];
         out.wsCount = list.length;
         out.attention = list
           .filter((w: any) => w.needs_human_attention === true || w.needs_human_attention === "true")
           .slice(0, 3)
           .map((w: any) => ({ id: w.id, title: w.title || `Workspace ${String(w.id).slice(0, 6)}` }));
-      } catch { /* v1 unreachable — skip */ }
+      } catch { v1ok = false; /* v1 unreachable — skip */ }
       try {
         const r = await aias.json<any>("/api/user/usage");
+        if (!r.ok) v1ok = false;
         if (r.ok && r.data && !r.data.unlimited && r.data.tokens_limit) {
           out.usagePct = Math.min(100, (r.data.tokens_used / r.data.tokens_limit) * 100);
           out.tokensUsed = r.data.tokens_used;
         } else if (r.ok && r.data) {
           out.tokensUsed = r.data.tokens_used ?? null;
         }
-      } catch { /* skip */ }
+      } catch { v1ok = false; /* skip */ }
       // DevNet local: pings
       try {
         const tok = localStorage.getItem("devnetwork_hash") || "";
@@ -256,6 +269,13 @@ function useBriefing(): BriefingData | null {
         out.unreadPings = list.filter((n: any) => !n.read).length || list.length || 0;
       } catch { /* skip */ }
       if (live) setData(out);
+      if (v1ok) {
+        failStreak = 0; skipTicks = 0;
+      } else {
+        failStreak += 1;
+        skipTicks = Math.min(2 ** failStreak, 10); // 1→2→4→8→10 ticks (max 5 min)
+      }
+      inFlight = false;
     };
     void pull();
     const t = setInterval(pull, 30_000);

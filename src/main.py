@@ -2183,10 +2183,13 @@ async def get_config():
     return JSONResponse({
         "default_ecosystem_id": DEVONE_ECOSYSTEM_ID,
         "platform": "devnetwork",
-        # AiAS v1.2 weave: where the v1 brain lives. Inline views (Playground,
-        # KeyStone, ...) call it cross-origin with a bridged session — v1's
-        # header-session auth accepts any origin by design.
-        "aias_api_base": os.environ.get("AIAS_API_BASE", "https://api.aiassist.net"),
+        # SAME-ORIGIN doctrine: the browser calls relative /api paths only;
+        # the server proxies v1 traffic to AIAS_API_BASE internally. That
+        # upstream address is an INTERNAL detail (often loopback) and must
+        # never reach clients — exporting it once made every browser dial
+        # 127.0.0.1:8000. Clients get only the public v1 web app address,
+        # used for link-outs (new-tab opens), never for fetches.
+        "aias_app_base": os.environ.get("AIAS_APP_BASE", "https://aiassist.net"),
         "auth_mode": os.environ.get("DEVNET_AUTH", "aias").lower(),
     })
 
@@ -7021,7 +7024,12 @@ async def v1_same_origin_proxy(v1_path: str, request: Request):
         resp = await _aias_ahttp.send(upstream, stream=True)
     except Exception as e:
         print(f"[v1proxy] upstream error on {url}: {type(e).__name__}: {e}")
-        raise HTTPException(status_code=502, detail="AiAS production unreachable")
+        # Exception CLASS in the detail: the browser network tab then tells
+        # the whole story (ReadTimeout = upstream hanging, ConnectError =
+        # nothing listening) without needing server log access.
+        raise HTTPException(
+            status_code=502,
+            detail=f"AiAS production unreachable ({type(e).__name__})")
 
     res_headers = {k: v for k, v in resp.headers.items()
                    if k.lower() not in _PROXY_SKIP_RES_HEADERS}
