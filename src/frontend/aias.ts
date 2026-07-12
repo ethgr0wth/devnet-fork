@@ -102,6 +102,27 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+/** Read an aias SSE stream (`data: {json}` frames) and dispatch each event.
+ *  Shared by Playground chat and Artifact generation. */
+async function readSse(res: Response, onEvent: (ev: any) => void): Promise<void> {
+  if (!res.body) return;
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const frames = buf.split("\n\n");
+    buf = frames.pop() || "";
+    for (const f of frames) {
+      const line = f.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      try { onEvent(JSON.parse(line.slice(6))); } catch { /* keep-alive */ }
+    }
+  }
+}
+
 // ── connect card (shared by all aias views) ─────────────────────────────────
 
 function renderConnect(container: HTMLElement, onConnected: () => void): void {
@@ -370,36 +391,21 @@ class PlaygroundView {
         asst.content = `⚠️ ${err?.detail || `Request failed (${res.status})`}`;
         this.renderMessages(); return;
       }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const frames = buf.split("\n\n");
-        buf = frames.pop() || "";
-        for (const f of frames) {
-          const line = f.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === "chunk" && ev.content) {
-              asst.content += ev.content;
-              this.renderMessages();
-            } else if (ev.type === "tool_start") {
-              this.status(`Running ${ev.count} tool${ev.count === 1 ? "" : "s"}…`);
-            } else if (ev.type === "tool_exec") {
-              this.status(`Tool: ${ev.tool_name}…`);
-            } else if (ev.type === "tool_done") {
-              this.status("Streaming…");
-            } else if (ev.type === "error") {
-              asst.content += `\n⚠️ ${ev.message || "stream error"}`;
-              this.renderMessages();
-            }
-          } catch { /* keep-alive or partial frame */ }
+      await readSse(res, (ev) => {
+        if (ev.type === "chunk" && ev.content) {
+          asst.content += ev.content;
+          this.renderMessages();
+        } else if (ev.type === "tool_start") {
+          this.status(`Running ${ev.count} tool${ev.count === 1 ? "" : "s"}…`);
+        } else if (ev.type === "tool_exec") {
+          this.status(`Tool: ${ev.tool_name}…`);
+        } else if (ev.type === "tool_done") {
+          this.status("Streaming…");
+        } else if (ev.type === "error") {
+          asst.content += `\n⚠️ ${ev.message || "stream error"}`;
+          this.renderMessages();
         }
-      }
+      });
       // Re-sync from the server so ids/tokens are canonical.
       await this.select(this.current.id);
     } catch (e) {

@@ -319,7 +319,7 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
   const greet = h < 5 ? "Burning the midnight oil" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#0a0a0f]"
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0a0a0f]"
          style={{ backgroundImage: "radial-gradient(80% 60% at 20% 0%, rgba(99,102,241,.14), transparent 60%), radial-gradient(70% 55% at 90% 100%, rgba(16,185,129,.10), transparent 60%)" }}>
       {/* top bar */}
       <div className="z-10 flex items-center gap-3 border-b border-white/10 px-4 py-2 backdrop-blur">
@@ -398,10 +398,17 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
 // ── island mount ─────────────────────────────────────────────────────────────
 
 let root: ReturnType<typeof createRoot> | null = null;
+let mounted: HTMLElement | null = null;
+let prevClassName: string | null = null;
 
 export async function mountAios(container: HTMLElement, opts: AiosOpts): Promise<void> {
   await aias.init();
   container.innerHTML = "";
+  // The classic shell's container is a flex-CENTERING stage (built for the
+  // auth card) — a mounted desktop must own the full canvas instead.
+  mounted = container;
+  prevClassName = container.className;
+  container.className = "relative h-full w-full overflow-hidden";
   root = createRoot(container);
   root.render(<AiosShell opts={opts} />);
 }
@@ -409,4 +416,7 @@ export async function mountAios(container: HTMLElement, opts: AiosOpts): Promise
 export function unmountAios(): void {
   root?.unmount();
   root = null;
+  if (mounted && prevClassName !== null) mounted.className = prevClassName;
+  mounted = null;
+  prevClassName = null;
 }
