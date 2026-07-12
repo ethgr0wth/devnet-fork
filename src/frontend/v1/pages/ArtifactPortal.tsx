@@ -581,16 +581,8 @@ Output ONLY valid JSON.`,
       <nav className="border-b border-white/10 bg-black/60 backdrop-blur-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" data-testid="link-back-dashboard">
-              <motion.span
-                className="flex items-center gap-2 text-white/60 hover:text-white transition-colors cursor-pointer"
-                whileHover={{ x: -2 }}
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm hidden sm:inline">Dashboard</span>
-              </motion.span>
-            </Link>
-            <div className="h-6 w-px bg-white/10" />
+            {/* V2 EDIT (Mark): back-to-dashboard link removed — this page
+                lives inside an AiOS window; the window chrome is the nav. */}
             <div className="flex items-center gap-2">
               <img src={aiasLogo} alt="AiAS" className="w-8 h-8 rounded-lg object-cover" />
               <div>
