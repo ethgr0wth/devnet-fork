@@ -23,6 +23,13 @@ export class AiasBridge {
       const res = await fetch("/api/config");
       const cfg = await res.json();
       if (cfg.aias_api_base) this.base = String(cfg.aias_api_base).replace(/\/$/, "");
+      // v2 identity federation: ONE identity. The token you signed in with
+      // IS the aias production token — the weave adopts it automatically,
+      // so the connect card never appears in federated mode.
+      if (cfg.auth_mode === "aias") {
+        const t = localStorage.getItem("devnetwork_hash");
+        if (t && !t.startsWith("dvs_")) localStorage.setItem(AIAS_TOKEN_KEY, t);
+      }
     } catch { /* keep default */ }
   }
 

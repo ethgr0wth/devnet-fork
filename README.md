@@ -45,14 +45,22 @@ See **`.env.example`** for every variable. The load-bearing ones:
 | `NEDB_DB` | `devnet` | database name |
 | `NEDBD_TOKEN` | — | shared bearer secret; nedbd 401s every `/v1` route without it |
 | `AIAS_API_BASE` | `https://api.aiassist.net` | the v1 brain for inline AiAS views |
+| `DEVNET_AUTH` | `aias` | `aias` = sign in with AiAS production; `local` = self-contained |
 | `DEVNET_SYSTEM_BOTS` | `off` | demo sim bots (real agents arrive in Phase 2) |
 | `WORKERS` | `1` | NEDB mode enforces 1 (in-process pub/sub + WS state) |
 
-## Auth
+## Auth — one identity (v2 federation)
 
-- **v1.2 front door**: email + password (+ optional TOTP) → `dvs_*` session
-  tokens riding the `X-Auth-Hash` header the whole API already speaks.
-- **Legacy fingerprint auth** still works (original devnet parity).
+**Default (`DEVNET_AUTH=aias`)**: the landing signs you into **AiAS
+production** — login and register proxy to `AIAS_API_BASE` (the one v1
+pattern: `/api/auth/login` + `/api/user/register`, TOTP included). Your v1
+session token is THE credential everywhere: social features, boot
+revalidation, and the inline weave views (no separate connect).
+Devnet auto-provisions your social-graph profile from the aias identity
+(id-stable, privileges mirrored).
+
+**`DEVNET_AUTH=local`**: self-contained accounts (pbkdf2 + `dvs_*`
+sessions) for offline dev. Legacy fingerprint auth still works too.
 
 ## The AiAS weave
 
