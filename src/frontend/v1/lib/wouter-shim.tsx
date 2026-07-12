@@ -78,6 +78,13 @@ const PATH_TO_APP: Array<[RegExp, string]> = [
   [/^\/dashboard\/control-center/, "control"],
   [/^\/dashboard\/policy-snapshots/, "policies"],
   [/^\/dashboard\/change-log/, "changes"],
+  [/^\/dashboard\/tools/, "tools"],
+  [/^\/dashboard\/leads/, "leads"],
+  [/^\/flashcards/, "flashcards"],
+  [/^\/dashboard\/team-members/, "team"],
+  [/^\/dashboard\/environments/, "environments"],
+  [/^\/dashboard\/settings/, "settings"],
+  [/^\/workspaces/, "workspaces"],
 ];
 
 export function navigateV1(href: string): void {

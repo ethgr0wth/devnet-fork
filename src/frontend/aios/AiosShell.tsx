@@ -13,10 +13,12 @@ import { createRoot } from "react-dom/client";
 import {
   Cpu, Sparkles, Code, Layers, Rocket, Target, BookOpen, Mic, Activity,
   Shield, History, Image, Users, MessageSquare, Newspaper, LogOut, LayoutGrid,
+  Wrench, TrendingUp, GraduationCap, UserPlus, Boxes, Settings,
 } from "lucide-react";
 import AppWindow, { type WindowState } from "./AppWindow";
 import { aias } from "../aias";
 import { Toaster } from "sonner";
+import { Toaster as ShadToaster } from "../v1/components/ui/toaster";
 import OraclePlayground from "../v1/pages/OraclePlayground";
 import ArtifactPortal from "../v1/pages/ArtifactPortal";
 import ImageWorkstation from "../v1/pages/ImageWorkstation";
@@ -31,6 +33,12 @@ import PolicySnapshots from "../v1/pages/PolicySnapshots";
 import ChangeLog from "../v1/pages/ChangeLog";
 import QuestsPortal from "../v1/pages/QuestsPortal";
 import QuestsWorkspace from "../v1/pages/QuestsWorkspace";
+import ToolsHub from "../v1/pages/ToolsHub";
+import LeadsPage from "../v1/pages/LeadsPage";
+import FlashCards from "../v1/pages/FlashCards";
+import TeamMembers from "../v1/pages/TeamMembers";
+import Environments from "../v1/pages/Environments";
+import AccountSettings from "../v1/pages/AccountSettings";
 import { WindowRouter } from "../v1/lib/wouter-shim";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "../v1/lib/queryClient";
@@ -76,6 +84,13 @@ const APPS: AppDef[] = [
   { id: "control",    label: "Control",    icon: Activity, gradient: "from-blue-500 to-indigo-600",  kind: "component", blurb: "Control center" },
   { id: "policies",   label: "Policies",   icon: Shield,   gradient: "from-cyan-400 to-teal-500",    kind: "component", blurb: "Policy snapshots" },
   { id: "changes",    label: "Changes",    icon: History,  gradient: "from-rose-500 to-red-600",     kind: "component", blurb: "Change log" },
+  // 100%-coverage sweep (Mark): the six pages nobody listed
+  { id: "tools",        label: "Tools",        icon: Wrench,        gradient: "from-orange-400 to-amber-600",  kind: "component", blurb: "Custom tools hub" },
+  { id: "leads",        label: "Leads",        icon: TrendingUp,    gradient: "from-blue-400 to-sky-600",      kind: "component", blurb: "Captured & scored leads" },
+  { id: "flashcards",   label: "Study",        icon: GraduationCap, gradient: "from-emerald-400 to-teal-600",  kind: "component", blurb: "Study Buddy flashcards" },
+  { id: "team",         label: "Team",         icon: UserPlus,      gradient: "from-teal-400 to-cyan-600",     kind: "component", blurb: "Team members & seats" },
+  { id: "environments", label: "Environments", icon: Boxes,         gradient: "from-indigo-400 to-violet-600", kind: "component", blurb: "Environment switcher" },
+  { id: "settings",     label: "Settings",     icon: Settings,      gradient: "from-zinc-400 to-zinc-600",     kind: "component", blurb: "Account & security" },
 ];
 
 // ── window store (v1 DashboardV3 reducer pattern) ────────────────────────────
@@ -186,6 +201,12 @@ const APP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   control: () => <V1Page Page={ControlCenter} />,
   policies: () => <V1Page Page={PolicySnapshots} />,
   changes: () => <V1Page Page={ChangeLog} />,
+  tools: () => <V1Page Page={ToolsHub} />,
+  leads: () => <V1Page Page={LeadsPage} />,
+  flashcards: () => <V1Page Page={FlashCards} />,
+  team: () => <V1Page Page={TeamMembers} />,
+  environments: () => <V1Page Page={Environments} />,
+  settings: () => <V1Page Page={AccountSettings} />,
 };
 
 // ── The Briefing (desktop widget — v1.1 heritage, real data only) ────────────
@@ -413,6 +434,7 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
       </div>
 
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
+      <ShadToaster />
 
       {/* dock */}
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center">
