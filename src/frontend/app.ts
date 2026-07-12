@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { showAiasView, type AiasViewKey } from './aias';
+import { mountAios, unmountAios } from './aios/AiosShell';
 
 marked.setOptions({
   breaks: true,
@@ -365,6 +366,7 @@ class DevNetwork {
       if (result.user) {
         this.appState = { mode: "app", user: result.user, hash: storedHash };
         this.showApp();
+        this.showAiosDesktop();
         return;
       }
       localStorage.removeItem(STORAGE_KEY);
@@ -621,6 +623,7 @@ class DevNetwork {
           localStorage.setItem(STORAGE_KEY, data.session_token);
           this.appState = { mode: "app", user: data.user, hash: data.session_token };
           this.showApp();
+          this.showAiosDesktop();
           return;
         }
         this.showAuthError(data.error || "Something went wrong. Please try again.");
@@ -674,6 +677,7 @@ class DevNetwork {
           localStorage.setItem(STORAGE_KEY, data.session_token);
           this.appState = { mode: "app", user: data.user, hash: data.session_token };
           this.showApp();
+          this.showAiosDesktop();
           return;
         }
         this.showAuthError(data.error || "Invalid code.");
@@ -1833,7 +1837,7 @@ class DevNetwork {
 
   private setActiveNav(activeId: string): void {
     const navIds = ["nav-feed", "nav-explore", "nav-groups", "nav-messages", "nav-notifications", "nav-geppetto", "nav-docs", "nav-admin", "nav-profile",
-      "nav-aias-playground", "nav-aias-keystone", "nav-aias-artifacts", "nav-aias-image", "nav-aias-agents"];
+      "nav-aios-desktop", "nav-aias-playground", "nav-aias-keystone", "nav-aias-artifacts", "nav-aias-image", "nav-aias-agents"];
     navIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
@@ -1886,6 +1890,7 @@ class DevNetwork {
     document.getElementById("nav-profile")?.addEventListener("click", () => this.showProfile());
 
     // AiAS constellation — v1 surfaces woven inline (v1.2)
+    document.getElementById("nav-aios-desktop")?.addEventListener("click", () => this.showAiosDesktop());
     (["playground", "keystone", "artifacts", "image", "agents"] as AiasViewKey[]).forEach((v) => {
       document.getElementById(`nav-aias-${v}`)?.addEventListener("click", () => this.showAias(v));
     });
@@ -3624,9 +3629,33 @@ class DevNetwork {
   }
 
   private showAias(view: AiasViewKey): void {
+    unmountAios();
     this.setActiveNav(`nav-aias-${view}`);
     this._currentView = `aias-${view}`;
     void showAiasView(this.container, view);
+  }
+
+  /** AiOS — the v2 surface. Default home after sign-in; the classic views
+   *  stay one click away (dock + sidebar). */
+  private showAiosDesktop(): void {
+    unmountAios();
+    this.setActiveNav("nav-aios-desktop");
+    this._currentView = "aios";
+    void mountAios(this.container, {
+      displayName: this.appState.user?.displayName || "there",
+      onClassic: (view) => {
+        unmountAios();
+        if (view === "workspaces") this.showGroups();
+        else if (view === "messages") this.showMessages();
+        else this.showApp();
+      },
+      onSignOut: () => {
+        unmountAios();
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem("aias_session_token");
+        window.location.reload();
+      },
+    });
   }
 
   private showDocs(initialSection?: string): void {

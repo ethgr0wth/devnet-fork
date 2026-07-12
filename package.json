@@ -4,23 +4,28 @@
   "main": "index.js",
   "scripts": {
     "build:css": "npx tailwindcss -i ./src/frontend/input.css -o ./src/static/styles.css --minify --config ./tailwind.config.js",
-    "build:js": "npx esbuild src/frontend/app.ts --bundle --outfile=src/static/app.js --format=iife --target=es2020",
+    "build:js": "npx esbuild src/frontend/app.ts --bundle --outfile=src/static/app.js --format=iife --target=es2020 --jsx=automatic",
     "build": "npm run build:css && npm run build:js",
     "watch:css": "npx tailwindcss -i ./src/frontend/input.css -o ./src/static/styles.css --watch --config ./tailwind.config.js",
-    "watch:js": "npx esbuild src/frontend/app.ts --bundle --outfile=src/static/app.js --format=iife --target=es2020 --watch"
+    "watch:js": "npx esbuild src/frontend/app.ts --bundle --outfile=src/static/app.js --format=iife --target=es2020 --jsx=automatic --watch"
   },
   "keywords": [],
   "author": "Interchained LLC",
   "license": "SEE LICENSE IN LICENSE",
-  "description": "DevNetwork — Professional networking for builders, creators, and developers.",
+  "description": "DevNetwork \u2014 Professional networking for builders, creators, and developers.",
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.3.1",
     "esbuild": "^0.27.2",
+    "lucide-react": "^1.24.0",
     "marked": "^17.0.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "tailwindcss": "^3.4.19"
   }
 }

@@ -1,7 +1,7 @@
 module.exports = {
   content: [
     "./src/templates/**/*.html",
-    "./src/frontend/**/*.ts",
+    "./src/frontend/**/*.{ts,tsx}",
     "./src/main.py"
   ],
   darkMode: 'class',

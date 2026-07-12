@@ -250,6 +250,7 @@ def build_frontend():
         str(BASE_DIR / "frontend" / "app.ts"),
         "--bundle",
         "--outfile=" + str(BASE_DIR / "static" / "app.js"),
+        "--jsx=automatic",
         "--minify"
     ], check=True)
 
