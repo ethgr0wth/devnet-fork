@@ -1889,10 +1889,14 @@ class DevNetwork {
     document.getElementById("nav-docs")?.addEventListener("click", () => this.showDocs());
     document.getElementById("nav-profile")?.addEventListener("click", () => this.showProfile());
 
-    // AiAS constellation — v1 surfaces woven inline (v1.2)
+    // AiAS constellation — sidebar entries DEEP-LINK into AiOS windows
     document.getElementById("nav-aios-desktop")?.addEventListener("click", () => this.showAiosDesktop());
-    (["playground", "keystone", "artifacts", "image", "agents"] as AiasViewKey[]).forEach((v) => {
-      document.getElementById(`nav-aias-${v}`)?.addEventListener("click", () => this.showAias(v));
+    const deepLinks: Record<string, string> = {
+      playground: "playground", keystone: "keystone", artifacts: "artifacts",
+      image: "images", agents: "agents",
+    };
+    Object.entries(deepLinks).forEach(([nav, appId]) => {
+      document.getElementById(`nav-aias-${nav}`)?.addEventListener("click", () => this.showAiosDesktop(appId));
     });
     
     // Sidebar toggle
@@ -3637,12 +3641,13 @@ class DevNetwork {
 
   /** AiOS — the v2 surface. Default home after sign-in; the classic views
    *  stay one click away (dock + sidebar). */
-  private showAiosDesktop(): void {
+  private showAiosDesktop(initialApp?: string): void {
     unmountAios();
     this.setActiveNav("nav-aios-desktop");
     this._currentView = "aios";
     void mountAios(this.container, {
       displayName: this.appState.user?.displayName || "there",
+      initialApp,
       onClassic: (view) => {
         unmountAios();
         if (view === "workspaces") this.showGroups();
