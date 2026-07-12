@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Set, List, Tuple
 from fastapi import FastAPI, Request, Header, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import redis  # type: ignore
@@ -6958,6 +6958,81 @@ async def get_thread_replies(group_id: str, root_message_id: str, x_auth_hash: O
     meta_raw = redis_client.get(f"thread:meta:{group_id}:{root_message_id}")
     meta = json.loads(str(meta_raw)) if meta_raw else {}
     return JSONResponse({"root": root_msg, "replies": replies, "meta": meta})
+
+# ── The same-origin v1 proxy (Mark: "every v1 surface belongs on devnet") ────
+# The transplanted v1 pages call RELATIVE /api paths — their original v1
+# form. Devnet serves its own routes first; anything matching a v1 prefix
+# below is proxied server-side to AIAS_API_BASE with the caller's token
+# forwarded BOTH ways v1 understands:
+#   X-Session-Token: <token>       (the modern dual-transport gates)
+#   Cookie: session_id=<token>     (EVERY legacy cookie-only gate)
+# One structure kills the whole cross-origin 401 class — no CORS, no
+# per-gate aias patches, no deploy races. Streaming (SSE) passes through.
+
+V1_PROXY_PREFIXES = (
+    "playground", "keystone", "runtime", "artifacts", "deployed-agents",
+    "flashcards", "providers", "templates", "directives", "environments",
+    "image", "tts", "voice", "voice-actions", "licenses", "subscription",
+    "billing", "org", "quests", "code", "blog", "knowledge", "stats",
+    "user",  # /api/user/me, /api/user/workspaces, usage, api-keys, ...
+)
+
+_PROXY_SKIP_REQ_HEADERS = {"host", "content-length", "connection",
+                           "accept-encoding", "cookie", "x-auth-hash",
+                           "x-session-token", "authorization"}
+_PROXY_SKIP_RES_HEADERS = {"content-length", "transfer-encoding",
+                           "content-encoding", "connection",
+                           "access-control-allow-origin",
+                           "access-control-allow-credentials",
+                           "set-cookie"}
+
+
+@app.api_route("/api/{v1_path:path}",
+               methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def v1_same_origin_proxy(v1_path: str, request: Request):
+    """Registered LAST — devnet's own /api routes always win; only unmatched
+    paths under a known v1 prefix are forwarded."""
+    head = v1_path.split("/", 1)[0]
+    if head not in V1_PROXY_PREFIXES:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    token = request.headers.get("X-Auth-Hash") \
+        or request.headers.get("X-Session-Token") or ""
+    if token.startswith("dvs_"):
+        # Local-mode devnet sessions carry no v1 identity.
+        raise HTTPException(status_code=401,
+                            detail="v1 surfaces require a federated AiAS session")
+
+    fwd_headers = {k: v for k, v in request.headers.items()
+                   if k.lower() not in _PROXY_SKIP_REQ_HEADERS}
+    if token:
+        fwd_headers["X-Session-Token"] = token
+        fwd_headers["Cookie"] = f"session_id={token}"
+
+    url = f"/api/{v1_path}"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    body = await request.body()
+
+    try:
+        upstream = _aias_ahttp.build_request(
+            request.method, url, headers=fwd_headers,
+            content=body if body else None)
+        resp = await _aias_ahttp.send(upstream, stream=True)
+    except Exception as e:
+        print(f"[v1proxy] upstream error on {url}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail="AiAS production unreachable")
+
+    res_headers = {k: v for k, v in resp.headers.items()
+                   if k.lower() not in _PROXY_SKIP_RES_HEADERS}
+
+    from starlette.background import BackgroundTask
+    return StreamingResponse(
+        resp.aiter_raw(),
+        status_code=resp.status_code,
+        headers=res_headers,
+        background=BackgroundTask(resp.aclose))
+
 
 if __name__ == "__main__":
     import uvicorn
