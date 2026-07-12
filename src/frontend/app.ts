@@ -3642,17 +3642,23 @@ class DevNetwork {
   /** AiOS — the v2 surface. Default home after sign-in; the classic views
    *  stay one click away (dock + sidebar). */
   /** The Bridge (P-A): pull v1 environments/workspaces into devnet twins.
-   *  Fire-and-forget with the caller's own federated token; 60s throttle. */
-  private bridgeSync(): void {
+   *  Fire-and-forget with the caller's own federated token; 60s throttle.
+   *  Resolves true when the pass created or archived twins (callers may
+   *  refresh their view), false when throttled, failed, or a no-op. */
+  private bridgeSync(): Promise<boolean> {
     try {
       const last = Number(localStorage.getItem("bridge-synced-at") || 0);
-      if (Date.now() - last < 60_000) return;
+      if (Date.now() - last < 60_000) return Promise.resolve(false);
       localStorage.setItem("bridge-synced-at", String(Date.now()));
-      void fetch("/api/bridge/sync-workspaces", {
+      return fetch("/api/bridge/sync-workspaces", {
         method: "POST",
         headers: { "X-Auth-Hash": this.appState.hash || "" },
-      });
-    } catch { /* never block the desktop on the bridge */ }
+      }).then(async (r) => {
+        if (!r.ok) return false;
+        const c = await r.json();
+        return ((c.communities_created || 0) + (c.archived || 0)) > 0;
+      }).catch(() => false);
+    } catch { return Promise.resolve(false); /* never block the desktop on the bridge */ }
   }
 
   private showAiosDesktop(initialApp?: string): void {
@@ -5601,6 +5607,15 @@ ws.onmessage = (event) => {
 
   private async showGroups(): Promise<void> {
     this.setActiveNav("nav-groups");
+    // Communities view is a bridge trigger too (per-environment sync
+    // experience): visiting it reconciles the ACTIVE v1 environment's
+    // workspaces. Fire-and-forget behind the same 60s throttle; when the
+    // pass actually created/archived twins, re-render once to show them.
+    void this.bridgeSync().then((changed) => {
+      if (changed && document.getElementById("groups-container")) {
+        void this.showGroups();
+      }
+    });
     const res = await fetch(`/api/groups?ecosystem_id=${this.activeEcosystem?.id || this.defaultEcosystemId}`, {
       headers: { "X-Auth-Hash": this.appState.hash || "" }
     });

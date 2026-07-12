@@ -172,13 +172,24 @@ function ComingOnline({ app }: { app: AppDef }) {
 
 // KeyStone is a two-page world: portal → /keystone/:id → the IDE workspace.
 // The WindowRouter serves wouter's API from window-local state.
+// The portal is a page (it scrolls), the workspace is an IDE (it must own a
+// fixed-height box and manage its own overflow) — so the scroll container
+// wraps ONLY the portal route. Putting the whole app in a scroller breaks
+// the workspace's percentage-height chain and collapses the chat column.
+function KeystonePortalPage() {
+  return (
+    <div className="h-full w-full overflow-y-auto">
+      <QuestsPortal />
+    </div>
+  );
+}
 function KeystoneApp() {
   return (
-    <div className="h-full w-full overflow-y-auto bg-zinc-950 [color-scheme:dark]">
+    <div className="h-full w-full overflow-hidden bg-zinc-950 [color-scheme:dark]">
       <WindowRouter
         initial="/keystone"
         routes={[
-          { pattern: "/keystone", component: QuestsPortal },
+          { pattern: "/keystone", component: KeystonePortalPage },
           { pattern: "/keystone/:id", component: QuestsWorkspace },
         ]}
       />
@@ -456,9 +467,18 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
       <ShadToaster />
 
-      {/* dock */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center">
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/50 px-2.5 py-1.5 backdrop-blur-xl">
+      {/* dock — slides away while any window is open so it never sits on top
+          of app UIs (composer bars, bottom navs); reappears when everything
+          is closed or minimized. */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center transition-all duration-300 ${
+          store.windows.some((w) => !w.minimized) ? "opacity-0" : ""
+        }`}
+        style={{ transform: store.windows.some((w) => !w.minimized) ? "translateY(6rem)" : "translateY(0)" }}
+      >
+        <div className={`flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/50 px-2.5 py-1.5 backdrop-blur-xl ${
+          store.windows.some((w) => !w.minimized) ? "pointer-events-none" : "pointer-events-auto"
+        }`}>
           {APPS.slice(0, 8).map((app) => {
             const Icon = app.icon;
             const running = store.windows.some((w) => w.appId === app.id);
