@@ -19,6 +19,21 @@ import { aias } from "../aias";
 import { Toaster } from "sonner";
 import OraclePlayground from "../v1/pages/OraclePlayground";
 import ArtifactPortal from "../v1/pages/ArtifactPortal";
+import ImageWorkstation from "../v1/pages/ImageWorkstation";
+import CodeGenerator from "../v1/pages/CodeGenerator";
+import Templates from "../v1/pages/Templates";
+import DeployedAgents from "../v1/pages/DeployedAgents";
+import Directives from "../v1/pages/Directives";
+import BlogDashboard from "../v1/pages/BlogDashboard";
+import VoiceChat from "../v1/pages/VoiceChat";
+import ControlCenter from "../v1/pages/ControlCenter";
+import PolicySnapshots from "../v1/pages/PolicySnapshots";
+import ChangeLog from "../v1/pages/ChangeLog";
+import QuestsPortal from "../v1/pages/QuestsPortal";
+import QuestsWorkspace from "../v1/pages/QuestsWorkspace";
+import { WindowRouter } from "../v1/lib/wouter-shim";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "../v1/lib/queryClient";
 import WorkspacesApp from "./apps/WorkspacesApp";
 
 /** REAL v1 pages render full-page layouts; inside a window they own a
@@ -140,10 +155,37 @@ function ComingOnline({ app }: { app: AppDef }) {
   );
 }
 
+// KeyStone is a two-page world: portal → /keystone/:id → the IDE workspace.
+// The WindowRouter serves wouter's API from window-local state.
+function KeystoneApp() {
+  return (
+    <div className="h-full w-full overflow-y-auto bg-zinc-950 [color-scheme:dark]">
+      <WindowRouter
+        initial="/keystone"
+        routes={[
+          { pattern: "/keystone", component: QuestsPortal },
+          { pattern: "/keystone/:id", component: QuestsWorkspace },
+        ]}
+      />
+    </div>
+  );
+}
+
 const APP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   playground: () => <V1Page Page={OraclePlayground} />,
   artifacts: () => <V1Page Page={ArtifactPortal} />,
   workspaces: WorkspacesApp,
+  images: () => <V1Page Page={ImageWorkstation} />,
+  codegen: () => <V1Page Page={CodeGenerator} />,
+  templates: () => <V1Page Page={Templates} />,
+  agents: () => <V1Page Page={DeployedAgents} />,
+  directives: () => <V1Page Page={Directives} />,
+  keystone: KeystoneApp,
+  blog: () => <V1Page Page={BlogDashboard} />,
+  voice: () => <V1Page Page={VoiceChat} />,
+  control: () => <V1Page Page={ControlCenter} />,
+  policies: () => <V1Page Page={PolicySnapshots} />,
+  changes: () => <V1Page Page={ChangeLog} />,
 };
 
 // ── The Briefing (desktop widget — v1.1 heritage, real data only) ────────────
@@ -408,7 +450,11 @@ export async function mountAios(container: HTMLElement, opts: AiosOpts): Promise
   prevClassName = container.className;
   container.className = "relative h-full w-full overflow-hidden";
   root = createRoot(container);
-  root.render(<AiosShell opts={opts} />);
+  root.render(
+    <QueryClientProvider client={queryClient}>
+      <AiosShell opts={opts} />
+    </QueryClientProvider>,
+  );
 }
 
 export function unmountAios(): void {

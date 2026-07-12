@@ -65,3 +65,22 @@ export async function apiRequest(
   }
   return res;
 }
+
+
+// ── react-query (pages like ChangeLog use useQuery) ─────────────────────────
+import { QueryClient } from "@tanstack/react-query";
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      queryFn: async ({ queryKey }) => {
+        const res = await apiFetch(queryKey.join("/") as string);
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        return res.json();
+      },
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 30_000,
+    },
+  },
+});
