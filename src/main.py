@@ -457,11 +457,12 @@ def _slugify(text: str, fallback: str) -> str:
     return f"{base or 'workspace'}-{fallback[:6]}"
 
 
-def _bridge_upstream(token: str, path: str):
+async def _bridge_upstream(token: str, path: str):
     try:
-        r = _aias_http.get(path, headers={"X-Session-Token": token})
+        r = await _aias_ahttp.get(path, headers={"X-Session-Token": token})
         return (r.json() if r.content else {}) if r.status_code == 200 else None
-    except Exception:
+    except Exception as e:
+        print(f"[bridge] upstream error on {path}: {type(e).__name__}")
         return None
 
 
@@ -479,15 +480,15 @@ async def bridge_sync_workspaces(request: Request,
                              "error": "The bridge requires a federated AiAS session."},
                             status_code=400)
 
-    me = _bridge_upstream(token, "/api/user/me") or {}
+    me = await _bridge_upstream(token, "/api/user/me") or {}
     me = me.get("user") or me
     active_env = me.get("active_environment_id") or ""
 
-    envs_body = _bridge_upstream(token, "/api/environments/") or {}
+    envs_body = await _bridge_upstream(token, "/api/environments/") or {}
     envs = envs_body.get("environments") or (
         envs_body if isinstance(envs_body, list) else [])
 
-    ws_body = _bridge_upstream(token, "/api/user/workspaces?limit=100")
+    ws_body = await _bridge_upstream(token, "/api/user/workspaces?limit=100")
     if ws_body is None:
         return JSONResponse({"success": False,
                              "error": "AiAS production unreachable."},
@@ -618,7 +619,13 @@ async def bridge_sync_workspaces(request: Request,
 DEVNET_AUTH = os.environ.get("DEVNET_AUTH", "aias").lower()
 AIAS_API_BASE = os.environ.get("AIAS_API_BASE", "https://api.aiassist.net").rstrip("/")
 _AIAS_TOK_CACHE_S = int(os.environ.get("AIAS_TOKEN_CACHE_S", "300"))
-_aias_http = httpx.Client(base_url=AIAS_API_BASE, timeout=15.0)
+# Async client for endpoint handlers — upstream slowness must NEVER block
+# the event loop (the 3:43 PM login-502 regression: a shared blocking client
+# wedged the loop once the desktop started fanning calls upstream).
+_aias_ahttp = httpx.AsyncClient(base_url=AIAS_API_BASE, timeout=10.0)
+# Short-timeout sync client ONLY for the cached token resolution inside the
+# synchronous get_current_user path (one call per user per 300s).
+_aias_http = httpx.Client(base_url=AIAS_API_BASE, timeout=6.0)
 
 
 def _tok_key(token: str) -> str:
@@ -714,10 +721,11 @@ def _fed_finish(v1_payload: dict) -> JSONResponse:
 async def _fed_login(request: Request) -> JSONResponse:
     data = await request.json()
     try:
-        r = _aias_http.post("/api/auth/login", json={
+        r = await _aias_ahttp.post("/api/auth/login", json={
             "email": (data.get("email") or "").strip(),
             "password": data.get("password") or ""})
-    except Exception:
+    except Exception as e:
+        print(f"[fed] login upstream error: {type(e).__name__}: {e}")
         return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
     body = r.json() if r.content else {}
     if r.status_code != 200:
@@ -731,10 +739,11 @@ async def _fed_login(request: Request) -> JSONResponse:
 async def _fed_login_2fa(request: Request) -> JSONResponse:
     data = await request.json()
     try:
-        r = _aias_http.post("/api/auth/verify-2fa", json={
+        r = await _aias_ahttp.post("/api/auth/verify-2fa", json={
             "pending_token": data.get("pending_token") or "",
             "code": (data.get("code") or "").strip()})
-    except Exception:
+    except Exception as e:
+        print(f"[fed] 2fa upstream error: {type(e).__name__}: {e}")
         return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
     body = r.json() if r.content else {}
     if r.status_code != 200:
@@ -747,10 +756,11 @@ async def _fed_signup(request: Request) -> JSONResponse:
     email = (data.get("email") or "").strip()
     password = data.get("password") or ""
     try:
-        r = _aias_http.post("/api/user/register", json={
+        r = await _aias_ahttp.post("/api/user/register", json={
             "email": email, "password": password,
             "display_name": (data.get("display_name") or "").strip()})
-    except Exception:
+    except Exception as e:
+        print(f"[fed] register upstream error: {type(e).__name__}: {e}")
         return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
     body = r.json() if r.content else {}
     if r.status_code != 200:
@@ -758,8 +768,8 @@ async def _fed_signup(request: Request) -> JSONResponse:
     # v1 register sets a cookie but returns no token in the body — complete
     # the loop with the one login pattern to get the header-transport token.
     try:
-        r2 = _aias_http.post("/api/auth/login",
-                             json={"email": email, "password": password})
+        r2 = await _aias_ahttp.post("/api/auth/login",
+                                    json={"email": email, "password": password})
         body2 = r2.json() if r2.content else {}
     except Exception:
         return JSONResponse({"success": False, "error": "Registered — now sign in."}, status_code=502)
