@@ -8,15 +8,27 @@
  * APP registry, calling production APIs with the federated session token.
  * Apps not yet ported render an honest "coming online" panel.
  */
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Cpu, Sparkles, Code, Layers, Rocket, Target, BookOpen, Mic, Activity,
-  Shield, History, Image, Users, MessageSquare, Newspaper, Loader2, Send,
-  Plus, Trash2, LogOut, LayoutGrid,
+  Shield, History, Image, Users, MessageSquare, Newspaper, LogOut, LayoutGrid,
 } from "lucide-react";
 import AppWindow, { type WindowState } from "./AppWindow";
 import { aias } from "../aias";
+import { Toaster } from "sonner";
+import OraclePlayground from "../v1/pages/OraclePlayground";
+import ArtifactPortal from "../v1/pages/ArtifactPortal";
+
+/** REAL v1 pages render full-page layouts; inside a window they own a
+ *  scrolling canvas. */
+function V1Page({ Page }: { Page: React.ComponentType<any> }) {
+  return (
+    <div className="h-full w-full overflow-y-auto bg-zinc-950 [color-scheme:dark]">
+      <Page />
+    </div>
+  );
+}
 
 // ── app registry ─────────────────────────────────────────────────────────────
 
@@ -127,165 +139,9 @@ function ComingOnline({ app }: { app: AppDef }) {
   );
 }
 
-// ── Playground: the first real windowed app ──────────────────────────────────
-
-interface PgSession { id: string; name: string; model_provider?: string; model_name?: string; updated_at?: string; messages?: PgMsg[]; }
-interface PgMsg { id: string; role: string; content: string; }
-
-function PlaygroundApp() {
-  const [sessions, setSessions] = useState<PgSession[] | null>(null);
-  const [current, setCurrent] = useState<PgSession | null>(null);
-  const [draft, setDraft] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [status, setStatus] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const load = async () => {
-    const r = await aias.json<PgSession[]>("/api/playground/sessions");
-    setSessions(Array.isArray(r.data) ? r.data : []);
-    if (Array.isArray(r.data) && r.data.length) void select(r.data[0].id);
-  };
-  const select = async (id: string) => {
-    const r = await aias.json<PgSession>(`/api/playground/sessions/${id}`);
-    if (r.ok) setCurrent(r.data);
-  };
-  const create = async () => {
-    const r = await aias.json<PgSession>("/api/playground/sessions", {
-      method: "POST",
-      body: JSON.stringify({ name: `AiOS session ${new Date().toLocaleTimeString()}` }),
-    });
-    if (r.ok) { setSessions((s) => [r.data, ...(s || [])]); setCurrent(r.data); }
-  };
-  const remove = async (id: string) => {
-    await aias.json(`/api/playground/sessions/${id}`, { method: "DELETE" });
-    setSessions((s) => (s || []).filter((x) => x.id !== id));
-    setCurrent((c) => (c?.id === id ? null : c));
-  };
-
-  useEffect(() => { void load(); }, []);
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [current?.messages?.length, streaming]);
-
-  const send = async () => {
-    if (!current || streaming) return;
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
-    setStreaming(true);
-    setStatus("Streaming…");
-    const asst: PgMsg = { id: "live", role: "assistant", content: "" };
-    setCurrent((c) => c && ({ ...c, messages: [...(c.messages || []),
-      { id: "u" + Date.now(), role: "user", content: text }, asst] }));
-    try {
-      const res = await aias.api(`/api/playground/sessions/${current.id}/chat/stream`, {
-        method: "POST", body: JSON.stringify({ message: text }),
-      });
-      if (!res.ok || !res.body) {
-        const err = await res.json().catch(() => ({} as any));
-        asst.content = `⚠️ ${err?.detail || `Request failed (${res.status})`}`;
-        setCurrent((c) => c && ({ ...c }));
-        return;
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const frames = buf.split("\n\n");
-        buf = frames.pop() || "";
-        for (const f of frames) {
-          const line = f.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === "chunk" && ev.content) {
-              asst.content += ev.content;
-              setCurrent((c) => c && ({ ...c }));
-            } else if (ev.type === "tool_exec") {
-              setStatus(`Tool: ${ev.tool_name}…`);
-            }
-          } catch { /* keep-alive */ }
-        }
-      }
-      await select(current.id);
-    } finally {
-      setStreaming(false);
-      setStatus("");
-    }
-  };
-
-  if (sessions === null) {
-    return <div className="flex h-full items-center justify-center bg-zinc-950">
-      <Loader2 className="h-6 w-6 animate-spin text-white/30" />
-    </div>;
-  }
-
-  return (
-    <div className="flex h-full bg-zinc-950 text-zinc-100">
-      <div className="flex w-52 shrink-0 flex-col border-r border-white/10">
-        <div className="flex items-center justify-between border-b border-white/10 p-2.5">
-          <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Sessions</span>
-          <button onClick={() => void create()} title="New session"
-                  className="rounded-md border border-emerald-500/30 bg-emerald-500/15 p-1 text-emerald-400 hover:bg-emerald-500/25">
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        <div className="flex-1 space-y-0.5 overflow-y-auto p-1.5">
-          {(sessions || []).map((s) => (
-            <div key={s.id}
-                 className={`group flex items-center rounded-lg ${current?.id === s.id ? "bg-white/10" : "hover:bg-white/5"}`}>
-              <button onClick={() => void select(s.id)} className="min-w-0 flex-1 px-2 py-1.5 text-left">
-                <span className="block truncate text-[12.5px] font-medium">{s.name || "Untitled"}</span>
-                <span className="block truncate text-[10.5px] text-zinc-500">{s.model_name || "auto"}</span>
-              </button>
-              <button onClick={() => void remove(s.id)}
-                      className="hidden px-1.5 text-zinc-500 hover:text-red-400 group-hover:block">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-          {!sessions.length && <p className="px-2 py-6 text-center text-xs text-zinc-500">No sessions yet.</p>}
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scrollRef} className="flex-1 space-y-2.5 overflow-y-auto p-3">
-          {!current && <div className="py-16 text-center text-sm text-zinc-500">Select or create a session.</div>}
-          {current && !(current.messages || []).length &&
-            <div className="py-16 text-center text-sm text-zinc-500">Fresh session — say something.</div>}
-          {(current?.messages || []).map((m, i) => (
-            <div key={m.id + i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl border px-3 py-2 text-[13px] ${
-                m.role === "user"
-                  ? "border-emerald-600/30 bg-emerald-600/20"
-                  : "border-white/10 bg-white/5"}`}>
-                {m.content}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-white/10 p-2.5">
-          <div className="flex gap-2">
-            <textarea value={draft} rows={1} placeholder="Message the model…"
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                      className="flex-1 resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-emerald-500/50" />
-            <button onClick={() => void send()} disabled={streaming}
-                    className="rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 px-3.5 text-zinc-950 disabled:opacity-50">
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </button>
-          </div>
-          <p className="mt-1 h-4 text-[10.5px] text-zinc-500">{status}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const APP_COMPONENTS: Record<string, React.ComponentType<any>> = {
-  playground: PlaygroundApp,
+  playground: () => <V1Page Page={OraclePlayground} />,
+  artifacts: () => <V1Page Page={ArtifactPortal} />,
 };
 
 // ── the desktop ──────────────────────────────────────────────────────────────
@@ -306,6 +162,17 @@ export interface AiosOpts {
 
 function AiosShell({ opts }: { opts: AiosOpts }) {
   const [store, dispatch] = useReducer(winReducer, { windows: [], nextZ: 10 });
+
+  // v1 pages navigate via the wouter shim → open the target as an app.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const appId = (e as CustomEvent).detail?.appId;
+      const app = APPS.find((a) => a.id === appId);
+      if (app) dispatch({ type: "OPEN", app });
+    };
+    window.addEventListener("aios:open-app", onOpen);
+    return () => window.removeEventListener("aios:open-app", onOpen);
+  }, []);
 
   const open = (app: AppDef) => {
     if (app.kind === "classic") {
@@ -373,6 +240,8 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
           );
         })}
       </div>
+
+      <Toaster theme="dark" position="bottom-right" richColors closeButton />
 
       {/* dock */}
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center">

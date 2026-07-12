@@ -251,6 +251,9 @@ def build_frontend():
         "--bundle",
         "--outfile=" + str(BASE_DIR / "static" / "app.js"),
         "--jsx=automatic",
+        "--alias:@=" + str(BASE_DIR / "frontend" / "v1"),
+        "--alias:wouter=" + str(BASE_DIR / "frontend" / "v1" / "lib" / "wouter-shim.tsx"),
+        "--loader:.png=dataurl",
         "--minify"
     ], check=True)
 
