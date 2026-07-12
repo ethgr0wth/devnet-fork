@@ -26,6 +26,9 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NEDB_PY = os.environ.get("NEDB_PY", "/agent/workspace/nedb/python")
 
+BOARD_TOKEN = "board-shared-secret-7x24"
+NEDB_AUTH = {"Authorization": f"Bearer {BOARD_TOKEN}"}
+
 PASS = FAIL = 0
 
 
@@ -86,13 +89,15 @@ def main():
         [sys.executable, "-m", "nedb.server", "--host", "127.0.0.1",
          "--port", str(nport), "--data", os.path.join(tmp, "data")],
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONPATH": NEDB_PY})
+        env={**os.environ, "PYTHONPATH": NEDB_PY,
+             "NEDBD_TOKEN": BOARD_TOKEN})
     devnet = None
     try:
         if not wait_http(f"{nbase}/health", nedbd, what="nedbd"):
             print("ABORT: nedbd failed to start")
             return 1
-        req(nbase, "POST", "/v1/databases", {"name": "devnet_board"})
+        req(nbase, "POST", "/v1/databases", {"name": "devnet_board"},
+            headers=NEDB_AUTH)
 
         devnet = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "src.main:app",
@@ -102,6 +107,7 @@ def main():
             env={**os.environ,
                  "DEVNET_STORAGE": "nedb",
                  "NEDBD_URL": nbase,
+                 "NEDBD_TOKEN": BOARD_TOKEN,
                  "NEDB_DB": "devnet_board",
                  "DEVNET_SYSTEM_BOTS": "off",
                  "PATH": os.environ.get("PATH", "")})
@@ -112,8 +118,14 @@ def main():
 
         def nql(q):
             s, b = req(nbase, "POST", "/v1/databases/devnet_board/query",
-                       {"nql": q})
+                       {"nql": q}, headers=NEDB_AUTH)
             return b.get("rows", []) if s == 200 else []
+
+        # daemon auth is REAL: tokenless /v1 must 401
+        s_noauth, _ = req(nbase, "POST", "/v1/databases/devnet_board/query",
+                          {"nql": "FROM user LIMIT 1"})
+        ok("A0 nedbd rejects tokenless /v1 (401)", s_noauth == 401,
+           f"s={s_noauth}")
 
         # ── A. boot & seed ──────────────────────────────────────────────
         print("A. boot & seed")
@@ -193,7 +205,8 @@ def main():
         sys.path.insert(0, str(ROOT))
         from src.nedb import NedbdClient  # noqa: E402
         from src.storage import DevnetRedisOnNedb  # noqa: E402
-        sc = DevnetRedisOnNedb(NedbdClient(base=nbase, db="devnet_board"))
+        sc = DevnetRedisOnNedb(NedbdClient(base=nbase, token=BOARD_TOKEN,
+                                   db="devnet_board"))
         u = json.loads(sc.get(f"user:{alice['id']}"))
         u["isSuperAdmin"] = True
         sc.set(f"user:{alice['id']}", json.dumps(u))

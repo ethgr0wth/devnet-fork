@@ -19,6 +19,8 @@ bots → *Agents* · devnet is the v1.2 theme.
 
 ```bash
 # 1. Start a NEDB daemon (engine ≥ 2.7.0 — pip install nedb-engine)
+#    NEDBD_TOKEN gates every /v1 route — same value goes in your .env.
+export NEDBD_TOKEN=$(openssl rand -hex 24)
 python3 -m nedb.server --host 127.0.0.1 --port 7070 --data ./nedb-data
 
 # 2. Configure (defaults work for a local boot)
@@ -41,6 +43,7 @@ See **`.env.example`** for every variable. The load-bearing ones:
 | `DEVNET_STORAGE` | `nedb` | `nedb` (v1.2) or `redis` (legacy parity) |
 | `NEDBD_URL` | `http://localhost:7070` | nedbd daemon |
 | `NEDB_DB` | `devnet` | database name |
+| `NEDBD_TOKEN` | — | shared bearer secret; nedbd 401s every `/v1` route without it |
 | `AIAS_API_BASE` | `https://api.aiassist.net` | the v1 brain for inline AiAS views |
 | `DEVNET_SYSTEM_BOTS` | `off` | demo sim bots (real agents arrive in Phase 2) |
 | `WORKERS` | `1` | NEDB mode enforces 1 (in-process pub/sub + WS state) |

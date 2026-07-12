@@ -38,6 +38,11 @@ if [ "$STORAGE" = "nedb" ]; then
              ${NEDBD_TOKEN:+-H "Authorization: Bearer $NEDBD_TOKEN"} \
              -d "{\"name\":\"$NEDB_DATABASE\"}" > /dev/null 2>&1
         echo -e "        database: ${CYAN}$NEDB_DATABASE${NC}"
+        if [ -n "$NEDBD_TOKEN" ]; then
+            echo -e "        auth:     ${GREEN}bearer token configured${NC}"
+        else
+            echo -e "        auth:     ${YELLOW}OPEN — set NEDBD_TOKEN on both nedbd and this app${NC}"
+        fi
     else
         echo -e "${RED}[1/4] nedbd NOT reachable at $NEDBD${NC}"
         echo -e "      Start it first, e.g.:"
@@ -79,7 +84,7 @@ echo -e "  Port:     ${GREEN}$PORT${NC}"
 echo -e "  Workers:  ${GREEN}$WORKERS${NC}"
 echo -e "  Storage:  ${GREEN}$STORAGE${NC}"
 if [ "$STORAGE" = "nedb" ]; then
-echo -e "  nedbd:    ${GREEN}$NEDBD${NC} / db ${GREEN}$NEDB_DATABASE${NC}"
+echo -e "  nedbd:    ${GREEN}$NEDBD${NC} / db ${GREEN}$NEDB_DATABASE${NC} / auth ${GREEN}$([ -n "$NEDBD_TOKEN" ] && echo on || echo OFF)${NC}"
 fi
 echo -e "  Sys bots: ${GREEN}${DEVNET_SYSTEM_BOTS:-off}${NC}"
 echo -e "  AiAS API: ${GREEN}${AIAS_API_BASE:-https://api.aiassist.net}${NC}"
