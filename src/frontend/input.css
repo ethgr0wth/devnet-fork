@@ -1333,3 +1333,53 @@
 .doc-callout-info strong, .doc-callout-warning strong {
   @apply block text-inherit;
 }
+
+/* ═══════════════ MARQUEE — suggestion rails (ImageWorkstation, FlashCards) ═══════════════ */
+/* Transplanted from v1: each row renders its items TWICE ([...row, ...row]) and
+   sets --marquee-duration + animationDirection inline. The keyframe slides the
+   doubled track by exactly -50% (one copy) for a seamless loop. These classes
+   lived in v1's global CSS and never came across — without them the track has no
+   width/animation and the pills simply wrap down the page (the bug). */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  flex-wrap: nowrap;
+  width: max-content;
+  gap: 0.5rem;
+  will-change: transform;
+  animation: marquee-scroll var(--marquee-duration, 60s) linear infinite;
+}
+/* Pause the row under the pointer so a moving pill stays clickable. */
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; flex-wrap: wrap; }
+}
+.marquee-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  cursor: pointer;
+  isolation: isolate;
+  background: transparent;
+  border: 0;
+}
+.marquee-pill-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  pointer-events: none;
+}
+.marquee-pill:hover .marquee-pill-border {
+  border-color: rgba(var(--eco-accent-rgb), 0.5);
+  background: rgba(var(--eco-accent-rgb), 0.08);
+  box-shadow: 0 0 16px rgba(var(--eco-accent-rgb), 0.15);
+}
