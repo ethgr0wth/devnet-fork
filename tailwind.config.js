@@ -6,7 +6,24 @@ module.exports = {
   ],
   darkMode: 'class',
   theme: {
+    // shadcn token colors used by transplanted v1 components (fixed mapping
+    // onto the devnet dark palette — v1 pages render true-to-life)
+    
     extend: {
+      colors: {
+        background: "#09090b",
+        foreground: "#fafafa",
+        border: "rgba(255,255,255,0.1)",
+        input: "rgba(255,255,255,0.08)",
+        ring: "#22d3ee",
+        primary: { DEFAULT: "#10b981", foreground: "#052e22" },
+        secondary: { DEFAULT: "#27272a", foreground: "#e4e4e7" },
+        muted: { DEFAULT: "#18181b", foreground: "#a1a1aa" },
+        accent: { DEFAULT: "#1f2937", foreground: "#e5e7eb" },
+        destructive: { DEFAULT: "#ef4444", foreground: "#fff" },
+        card: { DEFAULT: "#111113", foreground: "#fafafa" },
+        popover: { DEFAULT: "#111113", foreground: "#fafafa" },
+      },
       colors: {
         'background': '#09090b',
         'foreground': '#fafafa',
