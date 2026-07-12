@@ -144,6 +144,114 @@ const APP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   artifacts: () => <V1Page Page={ArtifactPortal} />,
 };
 
+// ── The Briefing (desktop widget — v1.1 heritage, real data only) ────────────
+// Composed client-side from what EXISTS today: v1 workspaces' attention
+// flags + usage (federated token) and DevNet's own pings. Every line traces
+// to a live endpoint; sources that fail are skipped, never faked.
+
+interface BriefingData {
+  attention: Array<{ id: string; title: string }>;
+  unreadPings: number;
+  usagePct: number | null;
+  tokensUsed: number | null;
+  wsCount: number;
+}
+
+function useBriefing(): BriefingData | null {
+  const [data, setData] = useState<BriefingData | null>(null);
+  useEffect(() => {
+    let live = true;
+    const pull = async () => {
+      const out: BriefingData = { attention: [], unreadPings: 0, usagePct: null, tokensUsed: null, wsCount: 0 };
+      // v1 production (federated): workspaces needing a human + usage
+      try {
+        const r = await aias.json<any>("/api/user/workspaces?limit=10");
+        const list = r.data?.workspaces || [];
+        out.wsCount = list.length;
+        out.attention = list
+          .filter((w: any) => w.needs_human_attention === true || w.needs_human_attention === "true")
+          .slice(0, 3)
+          .map((w: any) => ({ id: w.id, title: w.title || `Workspace ${String(w.id).slice(0, 6)}` }));
+      } catch { /* v1 unreachable — skip */ }
+      try {
+        const r = await aias.json<any>("/api/user/usage");
+        if (r.ok && r.data && !r.data.unlimited && r.data.tokens_limit) {
+          out.usagePct = Math.min(100, (r.data.tokens_used / r.data.tokens_limit) * 100);
+          out.tokensUsed = r.data.tokens_used;
+        } else if (r.ok && r.data) {
+          out.tokensUsed = r.data.tokens_used ?? null;
+        }
+      } catch { /* skip */ }
+      // DevNet local: pings
+      try {
+        const tok = localStorage.getItem("devnetwork_hash") || "";
+        const r = await fetch("/api/notifications", { headers: { "X-Auth-Hash": tok } });
+        const b = await r.json();
+        const list = Array.isArray(b) ? b : b.notifications || [];
+        out.unreadPings = list.filter((n: any) => !n.read).length || list.length || 0;
+      } catch { /* skip */ }
+      if (live) setData(out);
+    };
+    void pull();
+    const t = setInterval(pull, 30_000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+  return data;
+}
+
+function Chip({ color, children, onClick }: { color: "amber" | "cyan" | "violet"; children: React.ReactNode; onClick?: () => void }) {
+  const styles = {
+    amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    cyan: "border-cyan-500/25 bg-cyan-500/10 text-cyan-300",
+    violet: "border-violet-500/25 bg-violet-500/10 text-violet-300",
+  }[color];
+  return (
+    <button onClick={onClick}
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[12px] font-semibold align-baseline transition hover:-translate-y-px ${styles} ${onClick ? "cursor-pointer" : "cursor-default"}`}>
+      {children}
+    </button>
+  );
+}
+
+function BriefingWidget({ onOpen }: { onOpen: (appId: string) => void }) {
+  const b = useBriefing();
+  if (!b) {
+    return <div className="mt-4 h-5 w-72 animate-pulse rounded bg-white/5" />;
+  }
+  const lines: React.ReactNode[] = [];
+  if (b.attention.length) {
+    lines.push(
+      <p key="attn" className="text-[14px] leading-relaxed text-zinc-300">
+        <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400 align-middle" />
+        {b.attention.length === 1 ? "One conversation needs you: " : `${b.attention.length} conversations need you — first up: `}
+        <Chip color="amber" onClick={() => onOpen("control")}>{b.attention[0].title}</Chip>
+        {" "}flagged for a human on your v1 workspaces.
+      </p>);
+  }
+  const bits: React.ReactNode[] = [];
+  if (b.unreadPings > 0) bits.push(<React.Fragment key="p"><Chip color="cyan" onClick={() => window.dispatchEvent(new CustomEvent("aios:classic", { detail: "feed" }))}>{b.unreadPings} ping{b.unreadPings === 1 ? "" : "s"}</Chip> waiting here on DevNet</React.Fragment>);
+  if (b.tokensUsed !== null) bits.push(<React.Fragment key="u"><Chip color="violet">{b.usagePct !== null ? `${b.usagePct.toFixed(0)}% of tokens` : `${(b.tokensUsed / 1000).toFixed(1)}k tokens`}</Chip> used this month</React.Fragment>);
+  if (bits.length) {
+    lines.push(
+      <p key="pulse" className="text-[14px] leading-relaxed text-zinc-300">
+        {bits.map((x, i) => <React.Fragment key={i}>{i > 0 && " · "}{x}</React.Fragment>)}
+        {b.attention.length === 0 && " — nothing is waiting on you. Clear runway."}
+      </p>);
+  }
+  if (!lines.length) {
+    lines.push(<p key="quiet" className="text-[14px] text-zinc-400">All quiet — nothing needs you right now.</p>);
+  }
+  return (
+    <div className="mt-4 max-w-2xl space-y-1.5">
+      {lines}
+      <p className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-zinc-600">
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400/80" />
+        The Briefing · composed live from v1 production + DevNet · refreshes every 30s
+      </p>
+    </div>
+  );
+}
+
 // ── the desktop ──────────────────────────────────────────────────────────────
 
 function Clock() {
@@ -156,6 +264,8 @@ function Clock() {
 
 export interface AiosOpts {
   displayName: string;
+  /** Deep link: open this app's window immediately (sidebar → window). */
+  initialApp?: string;
   onClassic: (view: "feed" | "workspaces" | "messages") => void;
   onSignOut: () => void;
 }
@@ -170,8 +280,21 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
       const app = APPS.find((a) => a.id === appId);
       if (app) dispatch({ type: "OPEN", app });
     };
+    const onClassic = (e: Event) => {
+      const v = (e as CustomEvent).detail;
+      if (v === "feed" || v === "workspaces" || v === "messages") opts.onClassic(v);
+    };
     window.addEventListener("aios:open-app", onOpen);
-    return () => window.removeEventListener("aios:open-app", onOpen);
+    window.addEventListener("aios:classic", onClassic);
+    // Sidebar deep link: land with the requested window already open.
+    if (opts.initialApp) {
+      const app = APPS.find((a) => a.id === opts.initialApp);
+      if (app && app.kind === "component") dispatch({ type: "OPEN", app });
+    }
+    return () => {
+      window.removeEventListener("aios:open-app", onOpen);
+      window.removeEventListener("aios:classic", onClassic);
+    };
   }, []);
 
   const open = (app: AppDef) => {
@@ -207,6 +330,10 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
         <div className="h-full overflow-y-auto px-6 pb-24 pt-6">
           <h1 className="text-xl font-bold text-white">{greet}, {opts.displayName} <span className="align-middle">👋</span></h1>
           <p className="mt-0.5 text-sm text-zinc-400">Your whole platform, one desktop. Open anything.</p>
+          <BriefingWidget onOpen={(appId) => {
+            const app = APPS.find((a) => a.id === appId);
+            if (app) dispatch({ type: "OPEN", app });
+          }} />
           <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3">
             {APPS.map((app) => {
               const Icon = app.icon;
