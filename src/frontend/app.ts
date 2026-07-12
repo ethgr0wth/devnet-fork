@@ -402,12 +402,16 @@ class DevNetwork {
   private showLogin2FA(hash: string): void {
     this.container.innerHTML = `
       <div class="max-w-md mx-auto px-3 sm:px-4 py-6 sm:py-12" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-        <div class="card slide-up">
+        <div class="card slide-up holo-outline">
           <div class="text-center mb-4 sm:mb-6">
-            <div class="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 mb-3 shadow-lg shadow-emerald-500/25">
-              <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height:48px;object-fit:contain;margin:0 auto 10px;display:block;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+            <div class="mb-1" style="letter-spacing:-0.02em;">
+              <span class="text-xl sm:text-2xl font-bold text-white">Ai</span><span class="text-xl sm:text-2xl ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+            </div>
+            <div class="flex items-center justify-center gap-2 mb-3">
+              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+              <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
             </div>
             <h2 class="text-xl sm:text-2xl font-bold gradient-text">Welcome Back</h2>
             <p class="text-zinc-400 mt-1 text-sm">Enter your 2FA code to continue</p>
@@ -543,13 +547,20 @@ class DevNetwork {
         <div class="absolute inset-0 bg-zinc-950/80" style="z-index:1;"></div>
 
         <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
-          <div class="slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/70 border border-zinc-700/50 rounded-xl p-5 sm:p-7">
+          <div class="slide-up relative overflow-hidden backdrop-blur-md rounded-xl p-5 sm:p-7 holo-outline">
             <div class="text-center mb-5">
               <div class="relative inline-flex items-center justify-center mb-3">
-                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
-                <img src="/static/logo-icon-dark.png" alt="AiAS" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(16,185,129,0.35));">
+                <div class="absolute bg-cyan-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
+                <img src="/static/favicon.png" alt="AiAssist Secure" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
               </div>
-              <h1 class="text-2xl sm:text-3xl font-bold mb-1"><span class="gradient-text glow-text">AiAS</span></h1>
+              <h1 class="text-2xl sm:text-3xl mb-1" style="letter-spacing:-0.02em;">
+                <span class="font-bold text-white">Ai</span><span class="ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+              </h1>
+              <div class="flex items-center justify-center gap-2 mb-2">
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+                <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+              </div>
               <p class="text-zinc-400 text-sm">Your team — human and AI — in one space.</p>
             </div>
 
@@ -811,14 +822,26 @@ class DevNetwork {
   private showLinkDevice(): void {
     this.container.innerHTML = `
       <div class="max-w-lg mx-auto px-4 py-8">
-        <div class="card-elevated slide-up">
+        <div class="card-elevated slide-up holo-outline">
           <button id="back-to-intro" class="text-zinc-400 hover:text-emerald-400 mb-4 flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
             Back
           </button>
-          
+
+          <div class="text-center mb-4">
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height:40px;object-fit:contain;margin:0 auto 8px;display:block;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+            <div style="letter-spacing:-0.02em;">
+              <span class="text-lg font-bold text-white">Ai</span><span class="text-lg ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+            </div>
+            <div class="flex items-center justify-center gap-2 mt-1">
+              <span style="height:1px;width:32px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+              <span class="ace-text-shimmer-load text-[9px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+              <span style="height:1px;width:32px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+            </div>
+          </div>
+
           <h2 class="text-xl font-bold text-zinc-100 mb-2">Link This Device</h2>
           <p class="text-zinc-400 mb-6">Enter your login hash and 2FA code to link this device to your account.</p>
           
