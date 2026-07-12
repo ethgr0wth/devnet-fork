@@ -167,6 +167,33 @@ function renderDocked(container: HTMLElement, key: string, appBase: string): voi
     </div>`;
 }
 
+// ── KeyStone: iframe-first weave ─────────────────────────────────────────────
+// The v1 KeyStone IDE (QuestsPortal/QuestsWorkspace) framed inline. The
+// session token rides the URL FRAGMENT (#st=…) — fragments never hit
+// servers/logs, and the aias client can adopt it when frame-session support
+// lands there (Mark's call, separate repo). Until aias also serves
+// CSP frame-ancestors for this origin, browsers may refuse the frame —
+// the toolbar's full-screen link is the always-working path either way.
+
+function renderKeystoneFrame(container: HTMLElement, appBase: string): void {
+  const src = `${appBase}/keystone#st=${encodeURIComponent(aias.token || "")}`;
+  container.innerHTML = `
+    <div class="flex flex-col h-full min-h-0">
+      <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900/60">
+        <span class="text-sm font-bold flex items-center gap-2">💎 KeyStone</span>
+        <span class="text-[11px] text-zinc-500 hidden sm:inline">v1 IDE, woven inline — blank canvas below means framing isn't enabled on the AiAS server yet</span>
+        <span class="flex-1"></span>
+        <a href="${src}" target="_blank" rel="noopener noreferrer"
+           class="text-xs px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30">
+          Open full-screen ↗
+        </a>
+      </div>
+      <iframe src="${src}" class="flex-1 w-full border-0 bg-zinc-950"
+              allow="clipboard-read; clipboard-write"
+              referrerpolicy="strict-origin"></iframe>
+    </div>`;
+}
+
 // ── Playground: the first NATIVE inline view ─────────────────────────────────
 
 interface PgSession {
@@ -419,6 +446,10 @@ export async function showAiasView(container: HTMLElement, view: AiasViewKey): P
   }
   if (view === "playground") {
     await new PlaygroundView(container).mount();
+    return;
+  }
+  if (view === "keystone") {
+    renderKeystoneFrame(container, appBase);
     return;
   }
   renderDocked(container, view, appBase);
