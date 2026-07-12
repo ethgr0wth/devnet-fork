@@ -1068,7 +1068,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     let allEdited: string[] = [];
 
     try {
-      const response = await fetch(`/api/keystone/environments/${envId}/chat/stream`, {
+      const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-AiAssist-Provider": selectedProvider || detectedProvider },
         body: JSON.stringify({
@@ -1419,7 +1419,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setChatError(null);
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
-      const response = await fetch(`/api/keystone/environments/${envId}/chat/stream`, {
+      const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-AiAssist-Provider": selectedProvider || detectedProvider },
         body: JSON.stringify({

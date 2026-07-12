@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { apiFetch } from "@/lib/queryClient";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -225,7 +226,7 @@ export default function ImageWorkstation() {
     setIsGenerating(true);
     setError(null);
     try {
-      const res = await fetch("/api/image/generate", {
+      const res = await apiFetch("/api/image/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
