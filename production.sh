@@ -5,7 +5,7 @@
 #   cd devnet && ./production.sh [port]
 
 # Configuration
-PORT=${1:-5000}
+PORT=${1:-4633}
 WORKERS=${WORKERS:-1}
 HOST=${HOST:-0.0.0.0}
 
@@ -19,13 +19,6 @@ echo -e "${GREEN}================================${NC}"
 echo -e "${GREEN}   DevNetwork Production Server ${NC}"
 echo -e "${GREEN}================================${NC}"
 echo ""
-
-# Step 1: Redis
-if redis-cli ping &> /dev/null; then
-    echo -e "${GREEN}[1/4]${NC} Redis is running"
-else
-    echo "Failed to start Redis"
-fi
 
 # Step 2: Install dependencies if needed
 if [ ! -d "node_modules" ]; then
