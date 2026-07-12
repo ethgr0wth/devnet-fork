@@ -19,6 +19,7 @@ import { aias } from "../aias";
 import { Toaster } from "sonner";
 import OraclePlayground from "../v1/pages/OraclePlayground";
 import ArtifactPortal from "../v1/pages/ArtifactPortal";
+import WorkspacesApp from "./apps/WorkspacesApp";
 
 /** REAL v1 pages render full-page layouts; inside a window they own a
  *  scrolling canvas. */
@@ -44,7 +45,7 @@ type AppDef = {
 const APPS: AppDef[] = [
   // devnet-native surfaces (jump back to the classic shell views)
   { id: "feed",       label: "Feed",       icon: Newspaper,     gradient: "from-zinc-500 to-zinc-700",    kind: "classic", blurb: "The network feed" },
-  { id: "workspaces", label: "Workspaces", icon: Users,         gradient: "from-teal-500 to-emerald-600", kind: "classic", blurb: "Groups & channels" },
+  { id: "workspaces", label: "Workspaces", icon: Users,         gradient: "from-teal-500 to-emerald-600", kind: "component", blurb: "Your v1 workspaces as communities" },
   { id: "messages",   label: "Messages",   icon: MessageSquare, gradient: "from-blue-500 to-indigo-600",  kind: "classic", blurb: "Direct messages" },
   // v1 tools as windowed apps (component registry; ported one by one)
   { id: "playground", label: "Playground", icon: Sparkles, gradient: "from-amber-400 to-orange-500", kind: "component", blurb: "Test-drive models & personas" },
@@ -142,6 +143,7 @@ function ComingOnline({ app }: { app: AppDef }) {
 const APP_COMPONENTS: Record<string, React.ComponentType<any>> = {
   playground: () => <V1Page Page={OraclePlayground} />,
   artifacts: () => <V1Page Page={ArtifactPortal} />,
+  workspaces: WorkspacesApp,
 };
 
 // ── The Briefing (desktop widget — v1.1 heritage, real data only) ────────────
@@ -224,7 +226,7 @@ function BriefingWidget({ onOpen }: { onOpen: (appId: string) => void }) {
       <p key="attn" className="text-[14px] leading-relaxed text-zinc-300">
         <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400 align-middle" />
         {b.attention.length === 1 ? "One conversation needs you: " : `${b.attention.length} conversations need you — first up: `}
-        <Chip color="amber" onClick={() => onOpen("control")}>{b.attention[0].title}</Chip>
+        <Chip color="amber" onClick={() => onOpen("workspaces")}>{b.attention[0].title}</Chip>
         {" "}flagged for a human on your v1 workspaces.
       </p>);
   }
