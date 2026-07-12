@@ -3641,7 +3641,22 @@ class DevNetwork {
 
   /** AiOS — the v2 surface. Default home after sign-in; the classic views
    *  stay one click away (dock + sidebar). */
+  /** The Bridge (P-A): pull v1 environments/workspaces into devnet twins.
+   *  Fire-and-forget with the caller's own federated token; 60s throttle. */
+  private bridgeSync(): void {
+    try {
+      const last = Number(localStorage.getItem("bridge-synced-at") || 0);
+      if (Date.now() - last < 60_000) return;
+      localStorage.setItem("bridge-synced-at", String(Date.now()));
+      void fetch("/api/bridge/sync-workspaces", {
+        method: "POST",
+        headers: { "X-Auth-Hash": this.appState.hash || "" },
+      });
+    } catch { /* never block the desktop on the bridge */ }
+  }
+
   private showAiosDesktop(initialApp?: string): void {
+    this.bridgeSync();
     unmountAios();
     this.setActiveNav("nav-aios-desktop");
     this._currentView = "aios";
@@ -5644,6 +5659,7 @@ ws.onmessage = (event) => {
                   <h3 class="font-semibold text-zinc-100 truncate w-full group-hover/card:text-white transition-colors flex items-center justify-center gap-1.5">
                     ${g.privacy === 'private' ? '<i data-lucide="lock" class="w-3.5 h-3.5 text-amber-400 flex-shrink-0"></i>' : ''}
                     <span class="truncate">${this.escapeHtml(g.name)}</span>
+                    ${g.origin === "aias_v1" ? '<span class="ml-1 shrink-0 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-cyan-400 ring-1 ring-cyan-500/30" title="Bridged from your AiAS v1 workspace — same id, same entity">AiAS</span>' : ''}
                   </h3>
                   <p class="text-xs text-zinc-500 mt-1 flex items-center gap-1">
                     ${g.status === 'pending' ? `

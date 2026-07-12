@@ -441,6 +441,170 @@ async def auth_v1_signout(request: Request):
     return JSONResponse({"success": True})
 
 
+# ── The Bridge (P-A): v1 workspaces ARE devnet communities ───────────────────
+# Mark's vision (2026-07-12): identity, not mirroring-with-foreign-keys.
+#   v1 environment  ≡ devnet ecosystem   (same id)
+#   v1 workspace    ≡ devnet community   (same id)
+# One-way pull, powered by the CALLER's federated token (the server never
+# stores credentials). Twins carry METADATA ONLY — workspace message bodies
+# are per-org encrypted at v1 and are never copied; the conversation lane
+# always reads live through v1 with the caller's token.
+# Division of authority: v1 owns the conversation; devnet owns the social
+# shell (membership, native channel, reactions, feed presence) on the twin.
+
+def _slugify(text: str, fallback: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:40]
+    return f"{base or 'workspace'}-{fallback[:6]}"
+
+
+def _bridge_upstream(token: str, path: str):
+    try:
+        r = _aias_http.get(path, headers={"X-Session-Token": token})
+        return (r.json() if r.content else {}) if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+@app.post("/api/bridge/sync-workspaces")
+async def bridge_sync_workspaces(request: Request,
+                                 x_auth_hash: Optional[str] = Header(None)):
+    """Pull the caller's v1 environments + active-env workspaces and upsert
+    devnet twins (ecosystems + communities) under the SAME ids."""
+    user = get_current_user(x_auth_hash or "")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = x_auth_hash or ""
+    if DEVNET_AUTH != "aias" or token.startswith("dvs_"):
+        return JSONResponse({"success": False,
+                             "error": "The bridge requires a federated AiAS session."},
+                            status_code=400)
+
+    me = _bridge_upstream(token, "/api/user/me") or {}
+    me = me.get("user") or me
+    active_env = me.get("active_environment_id") or ""
+
+    envs_body = _bridge_upstream(token, "/api/environments/") or {}
+    envs = envs_body.get("environments") or (
+        envs_body if isinstance(envs_body, list) else [])
+
+    ws_body = _bridge_upstream(token, "/api/user/workspaces?limit=100")
+    if ws_body is None:
+        return JSONResponse({"success": False,
+                             "error": "AiAS production unreachable."},
+                            status_code=502)
+    workspaces = ws_body.get("workspaces") or []
+
+    now = datetime.utcnow()
+    counts = {"ecosystems": 0, "communities_created": 0,
+              "communities_updated": 0, "archived": 0, "conflicts": 0}
+
+    # ── ecosystems ← environments (ALL of them, same ids) ──
+    eco_ids = set()
+    for env in envs:
+        env_id = env.get("id")
+        if not env_id:
+            continue
+        eco_ids.add(env_id)
+        existing_raw = redis_client.get(f"ecosystem:{env_id}")
+        existing = json.loads(str(existing_raw)) if existing_raw else None
+        if existing and existing.get("origin") != "aias_v1":
+            counts["conflicts"] += 1  # never repurpose a non-twin
+            continue
+        name = env.get("name") or f"Environment {str(env_id)[:6]}"
+        slug = _slugify(name, str(env_id))
+        eco = existing or {
+            "id": env_id, "slug": slug, "description":
+                "AiAS environment — bridged from v1 production",
+            "icon": "", "accent_color": "#22d3ee",
+            "owner_id": user["id"], "created_at": now.isoformat(),
+            "settings": {},
+        }
+        eco["name"] = name
+        eco["origin"] = "aias_v1"
+        eco["origin_synced_at"] = now.isoformat()
+        pipeline = redis_client.pipeline()
+        pipeline.set(f"ecosystem:{env_id}", json.dumps(eco))
+        pipeline.set(f"ecosystem:slug:{eco['slug']}", env_id)
+        pipeline.sadd(f"ecosystem:members:{env_id}", user["id"])
+        pipeline.execute()
+        counts["ecosystems"] += 1
+
+    # ── communities ← workspaces (active env this pass) ──
+    prev_ids = set(redis_client.smembers(f"bridge:groups:{user['id']}") or [])
+    seen_ids = set()
+    for w in workspaces:
+        ws_id = w.get("id")
+        if not ws_id:
+            continue
+        seen_ids.add(ws_id)
+        eco_id = w.get("environment_id") or active_env or DEVONE_ECOSYSTEM_ID
+        title = w.get("title") or (w.get("first_message") or "")[:40] \
+            or f"Workspace {str(ws_id)[:6]}"
+        attention = str(w.get("needs_human_attention")).lower() == "true"
+        raw = redis_client.get(f"group:{ws_id}")
+        existing = json.loads(str(raw)) if raw else None
+        if existing and existing.get("origin") != "aias_v1":
+            counts["conflicts"] += 1
+            continue
+        if existing:
+            existing["name"] = title
+            existing["status"] = "approved"
+            existing["needs_attention"] = attention
+            existing["origin_synced_at"] = now.isoformat()
+            existing["ecosystem_id"] = existing.get("ecosystem_id") or eco_id
+            redis_client.set(f"group:{ws_id}", json.dumps(existing))
+            counts["communities_updated"] += 1
+        else:
+            slug = _slugify(title, str(ws_id))
+            group = {
+                "id": ws_id, "name": title, "slug": slug,
+                "description": "AiAS workspace — the conversation lane lives on v1 production; this is its community.",
+                "terms": "", "avatar": "",
+                "creator_id": user["id"], "created_at": now.isoformat(),
+                "status": "approved", "privacy": "private",
+                "member_count": 1, "ecosystem_id": eco_id,
+                "origin": "aias_v1",
+                "origin_synced_at": now.isoformat(),
+                "needs_attention": attention,
+            }
+            pipeline = redis_client.pipeline()
+            pipeline.set(f"group:{ws_id}", json.dumps(group))
+            pipeline.set(f"group:slug:{slug}", ws_id)
+            pipeline.zadd("groups:approved", {ws_id: now.timestamp()})
+            pipeline.zadd(f"ecosystem:groups:{eco_id}", {ws_id: now.timestamp()})
+            pipeline.hset(f"group:roles:{ws_id}", user["id"], "owner")
+            pipeline.sadd(f"group:members:{ws_id}", user["id"])
+            pipeline.sadd(f"bridge:groups:{user['id']}", ws_id)
+            pipeline.execute()
+            counts["communities_created"] += 1
+        # membership accrues from each caller's own v1 access
+        if existing:
+            pipeline = redis_client.pipeline()
+            pipeline.sadd(f"group:members:{ws_id}", user["id"])
+            pipeline.sadd(f"bridge:groups:{user['id']}", ws_id)
+            if not redis_client.hget(f"group:roles:{ws_id}", user["id"]):
+                pipeline.hset(f"group:roles:{ws_id}", user["id"], "owner")
+            pipeline.execute()
+
+    # ── archival: twins this user synced before that v1 no longer lists ──
+    # (active-env scope: only archive twins that BELONG to the active env,
+    # so rooms from other environments survive until you sync there.)
+    for gone in (prev_ids - seen_ids):
+        raw = redis_client.get(f"group:{gone}")
+        if not raw:
+            continue
+        g = json.loads(str(raw))
+        if g.get("origin") == "aias_v1" and g.get("status") != "archived" \
+                and (not active_env or g.get("ecosystem_id") == active_env):
+            g["status"] = "archived"
+            g["origin_synced_at"] = now.isoformat()
+            redis_client.set(f"group:{gone}", json.dumps(g))
+            counts["archived"] += 1
+
+    return JSONResponse({"success": True, **counts,
+                         "active_environment": active_env})
+
+
 # ── AiAS identity federation (v2: one identity, anchored at production) ──────
 # Mark's architecture call (2026-07-12): devnet does NOT replace the aias
 # backend — it becomes a first-class citizen of AiAS production. There is ONE
