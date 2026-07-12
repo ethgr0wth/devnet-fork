@@ -91,7 +91,7 @@ echo -e "  AiAS API: ${GREEN}${AIAS_API_BASE:-https://api.aiassist.net}${NC}"
 echo ""
 
 # Run with uvicorn (from the repo root)
-exec python -m uvicorn src.main:app \
+exec python3 -m uvicorn src.main:app \
     --host $HOST \
     --port $PORT \
     --workers $WORKERS \
