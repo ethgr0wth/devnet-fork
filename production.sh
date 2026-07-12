@@ -86,6 +86,7 @@ echo -e "  Storage:  ${GREEN}$STORAGE${NC}"
 if [ "$STORAGE" = "nedb" ]; then
 echo -e "  nedbd:    ${GREEN}$NEDBD${NC} / db ${GREEN}$NEDB_DATABASE${NC} / auth ${GREEN}$([ -n "$NEDBD_TOKEN" ] && echo on || echo OFF)${NC}"
 fi
+echo -e "  Identity: ${GREEN}${DEVNET_AUTH:-aias}${NC} $([ "${DEVNET_AUTH:-aias}" = "aias" ] && echo "(sign in = AiAS production)")"
 echo -e "  Sys bots: ${GREEN}${DEVNET_SYSTEM_BOTS:-off}${NC}"
 echo -e "  AiAS API: ${GREEN}${AIAS_API_BASE:-https://api.aiassist.net}${NC}"
 echo ""

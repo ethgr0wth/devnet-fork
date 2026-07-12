@@ -320,6 +320,8 @@ def get_user_by_session(token: str) -> Optional[dict]:
 @app.post("/api/auth/signup")
 async def auth_v1_signup(request: Request):
     """AiAS v1-pattern registration: email + password + display name."""
+    if DEVNET_AUTH == "aias":
+        return await _fed_signup(request)
     data = await request.json()
     email = _normalize_email(data.get("email"))
     password = data.get("password") or ""
@@ -375,6 +377,8 @@ async def auth_v1_signup(request: Request):
 async def auth_v1_login(request: Request):
     """AiAS v1-pattern login. Returns requires_2fa + pending_token when the
     account has TOTP enabled, otherwise a session token directly."""
+    if DEVNET_AUTH == "aias":
+        return await _fed_login(request)
     data = await request.json()
     email = _normalize_email(data.get("email"))
     password = data.get("password") or ""
@@ -399,6 +403,8 @@ async def auth_v1_login(request: Request):
 
 @app.post("/api/auth/login-2fa")
 async def auth_v1_login_2fa(request: Request):
+    if DEVNET_AUTH == "aias":
+        return await _fed_login_2fa(request)
     data = await request.json()
     pending = data.get("pending_token") or ""
     code = (data.get("code") or "").strip()
@@ -426,7 +432,173 @@ async def auth_v1_signout(request: Request):
     token = request.headers.get("X-Auth-Hash", "")
     if token.startswith("dvs_"):
         redis_client.delete(f"session:{token}")
+    else:
+        redis_client.delete(f"aias_tok:{_tok_key(token)}")
     return JSONResponse({"success": True})
+
+
+# ── AiAS identity federation (v2: one identity, anchored at production) ──────
+# Mark's architecture call (2026-07-12): devnet does NOT replace the aias
+# backend — it becomes a first-class citizen of AiAS production. There is ONE
+# login/register pattern: aias v1's. The landing proxies to
+# {AIAS_API_BASE}/api/auth/login (+verify-2fa) and /api/user/register; the v1
+# session token becomes THE credential everywhere (front door, social
+# features, inline weave views). Devnet auto-provisions its social-graph user
+# doc from the aias identity on first sight. DEVNET_AUTH=local keeps the
+# self-contained mode for offline dev / air-gapped boots.
+
+DEVNET_AUTH = os.environ.get("DEVNET_AUTH", "aias").lower()
+AIAS_API_BASE = os.environ.get("AIAS_API_BASE", "https://api.aiassist.net").rstrip("/")
+_AIAS_TOK_CACHE_S = int(os.environ.get("AIAS_TOKEN_CACHE_S", "300"))
+_aias_http = httpx.Client(base_url=AIAS_API_BASE, timeout=15.0)
+
+
+def _tok_key(token: str) -> str:
+    """Cache key from a token — hash it; raw credentials never persist."""
+    return hashlib.sha256((token or "").encode()).hexdigest()[:40]
+
+
+def _fed_err(payload: dict, status: int) -> JSONResponse:
+    msg = payload.get("detail") or payload.get("error") or "Sign-in failed."
+    return JSONResponse({"success": False, "error": str(msg)}, status_code=status)
+
+
+def _provision_aias_user(v1u: dict) -> dict:
+    """Mirror an aias identity into the devnet social graph (id-stable)."""
+    uid = v1u["id"]
+    existing = redis_client.get(f"user:{uid}")
+    if existing:
+        user = json.loads(str(existing))
+        user["lastSeen"] = datetime.utcnow().isoformat()
+        # keep privilege in sync with production
+        user["isSuperAdmin"] = v1u.get("role") in ("super_admin", "admin") or user.get("isSuperAdmin", False)
+        redis_client.set(f"user:{uid}", json.dumps(user))
+        return user
+
+    base_name = normalize_username(v1u.get("display_name") or
+                                   (v1u.get("email") or "member").split("@")[0])
+    name, n = base_name or "member", 2
+    while redis_client.get(f"user:name:{name}") not in (None, uid):
+        name = f"{base_name}{n}"
+        n += 1
+    now = datetime.utcnow().isoformat()
+    user = {
+        "id": uid,
+        "displayName": name,
+        "email": v1u.get("email") or "",
+        "auth_scheme": "aias",
+        "plan": v1u.get("plan") or "",
+        "bio": "", "field": "", "experience": "", "skills": [],
+        "focus": "", "interests": [], "teamPreference": "", "talents": [],
+        "portfolio": "", "age_confirmed": True,
+        "twoFactorEnabled": True,  # governed by aias, not local TOTP
+        "createdAt": now, "lastSeen": now,
+        "isSuperAdmin": v1u.get("role") in ("super_admin", "admin"),
+    }
+    pipeline = redis_client.pipeline()
+    pipeline.set(f"user:{uid}", json.dumps(user))
+    pipeline.set(f"user:name:{name}", uid)
+    if user["email"]:
+        pipeline.set(f"user:email:{user['email'].lower()}", uid)
+    pipeline.incr("stats:users:count")
+    pipeline.execute()
+    return user
+
+
+def _aias_session_user(token: str) -> Optional[dict]:
+    """Resolve an aias session token → provisioned devnet user (cached)."""
+    if not token or token.startswith("dvs_"):
+        return None
+    uid = redis_client.get(f"aias_tok:{_tok_key(token)}")
+    if uid:
+        d = redis_client.get(f"user:{uid}")
+        if d:
+            return json.loads(str(d))
+    try:
+        r = _aias_http.get("/api/user/me", headers={"X-Session-Token": token})
+        if r.status_code != 200:
+            return None
+        v1u = r.json()
+        v1u = v1u.get("user") or v1u  # tolerate either envelope
+        if not v1u.get("id"):
+            return None
+    except Exception:
+        return None
+    user = _provision_aias_user(v1u)
+    redis_client.set(f"aias_tok:{_tok_key(token)}", user["id"],
+                     ex=_AIAS_TOK_CACHE_S)
+    return user
+
+
+def _fed_finish(v1_payload: dict) -> JSONResponse:
+    """Common tail for login/2fa/register proxies: provision + local shape."""
+    v1u = v1_payload.get("user") or {}
+    token = v1_payload.get("session_token")
+    if not (v1u.get("id") and token):
+        return _fed_err(v1_payload, 502)
+    user = _provision_aias_user(v1u)
+    redis_client.set(f"aias_tok:{_tok_key(token)}", user["id"],
+                     ex=_AIAS_TOK_CACHE_S)
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+async def _fed_login(request: Request) -> JSONResponse:
+    data = await request.json()
+    try:
+        r = _aias_http.post("/api/auth/login", json={
+            "email": (data.get("email") or "").strip(),
+            "password": data.get("password") or ""})
+    except Exception:
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    if body.get("requires_2fa") and body.get("pending_token"):
+        return JSONResponse({"success": True, "requires_2fa": True,
+                             "pending_token": body["pending_token"]})
+    return _fed_finish(body)
+
+
+async def _fed_login_2fa(request: Request) -> JSONResponse:
+    data = await request.json()
+    try:
+        r = _aias_http.post("/api/auth/verify-2fa", json={
+            "pending_token": data.get("pending_token") or "",
+            "code": (data.get("code") or "").strip()})
+    except Exception:
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    return _fed_finish(body)
+
+
+async def _fed_signup(request: Request) -> JSONResponse:
+    data = await request.json()
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    try:
+        r = _aias_http.post("/api/user/register", json={
+            "email": email, "password": password,
+            "display_name": (data.get("display_name") or "").strip()})
+    except Exception:
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    # v1 register sets a cookie but returns no token in the body — complete
+    # the loop with the one login pattern to get the header-transport token.
+    try:
+        r2 = _aias_http.post("/api/auth/login",
+                             json={"email": email, "password": password})
+        body2 = r2.json() if r2.content else {}
+    except Exception:
+        return JSONResponse({"success": False, "error": "Registered — now sign in."}, status_code=502)
+    if r2.status_code != 200 or not body2.get("session_token"):
+        return JSONResponse({"success": True, "registered": True,
+                             "error": "Account created — sign in to continue."})
+    return _fed_finish(body2)
 
 def get_current_user(auth_hash: str) -> Optional[dict]:
     """One credential header, two schemes: AiAS v1 session tokens (dvs_*)
@@ -434,6 +606,8 @@ def get_current_user(auth_hash: str) -> Optional[dict]:
     if not auth_hash:
         return None
     user = get_user_by_session(auth_hash) or get_user_by_hash(auth_hash)
+    if user is None and DEVNET_AUTH == "aias":
+        user = _aias_session_user(auth_hash)
     if user and redis_client.sismember("platform:banned", user.get("id", "")):
         return None
     return user
@@ -1829,6 +2003,7 @@ async def get_config():
         # KeyStone, ...) call it cross-origin with a bridged session — v1's
         # header-session auth accepts any origin by design.
         "aias_api_base": os.environ.get("AIAS_API_BASE", "https://api.aiassist.net"),
+        "auth_mode": os.environ.get("DEVNET_AUTH", "aias").lower(),
     })
 
 @app.get("/", response_class=HTMLResponse)
@@ -1861,6 +2036,15 @@ async def validate_auth(request: Request):
 
     if not hash_value:
         raise HTTPException(status_code=400, detail="Hash required")
+
+    # Federated aias tokens validate against production (cached).
+    if DEVNET_AUTH == "aias" and not str(hash_value).startswith("dvs_") \
+            and len(str(hash_value)) > 24:
+        fed_user = _aias_session_user(str(hash_value))
+        if fed_user:
+            fed_user.pop("password", None)
+            return JSONResponse({"valid": True, "user": fed_user})
+        # fall through: may be a legacy fingerprint hash
 
     # AiAS v1 sessions (dvs_*) are post-authentication credentials — they
     # validate directly, no 2FA re-challenge on boot.

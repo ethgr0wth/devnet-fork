@@ -110,6 +110,7 @@ def main():
                  "NEDBD_TOKEN": BOARD_TOKEN,
                  "NEDB_DB": "devnet_board",
                  "DEVNET_SYSTEM_BOTS": "off",
+                 "DEVNET_AUTH": "local",
                  "PATH": os.environ.get("PATH", "")})
         if not wait_http(f"{dbase}/api/config", devnet, what="devnet"):
             print("ABORT: devnet failed to start — log tail:")
@@ -272,6 +273,112 @@ def main():
         ok("G4 global feed zset doc exists", len(feedz) == 1)
         ok("G5 every row engine-sequenced",
            all("_seq" in r for r in (posts + gm[:20] + cnt + feedz)))
+
+        # ── H. identity federation (mock AiAS production upstream) ─────
+        print("H. identity federation (DEVNET_AUTH=aias, mock upstream)")
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+
+        MOCK_TOKEN = "aias-mock-session-token-abc123"
+        V1_USER = {"id": "v1-user-mark", "email": "mark@interchained.org",
+                   "display_name": "Mark", "role": "super_admin", "plan": "pro"}
+
+        class MockAias(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _json(self, code, obj):
+                b = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+                if self.path == "/api/auth/login":
+                    if body.get("email") == V1_USER["email"] and \
+                            body.get("password") == "prod-password":
+                        return self._json(200, {"user": V1_USER,
+                                                "session_token": MOCK_TOKEN})
+                    return self._json(401, {"detail": "Invalid email or password"})
+                if self.path == "/api/user/register":
+                    return self._json(200, {"user": V1_USER,
+                                            "message": "Registration successful"})
+                self._json(404, {"detail": "nope"})
+
+            def do_GET(self):
+                if self.path.startswith("/api/user/me"):
+                    if self.headers.get("X-Session-Token") == MOCK_TOKEN:
+                        return self._json(200, V1_USER)
+                    return self._json(401, {"detail": "no session"})
+                self._json(404, {"detail": "nope"})
+
+        mport = _free_port()
+        mock = ThreadingHTTPServer(("127.0.0.1", mport), MockAias)
+        threading.Thread(target=mock.serve_forever, daemon=True).start()
+
+        fport = _free_port()
+        fbase = f"http://127.0.0.1:{fport}"
+        req(nbase, "POST", "/v1/databases", {"name": "devnet_fed"},
+            headers=NEDB_AUTH)
+        fed = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "src.main:app",
+             "--host", "127.0.0.1", "--port", str(fport)],
+            cwd=ROOT, stdout=open(os.path.join(tmp, "fed.log"), "w"),
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "DEVNET_STORAGE": "nedb",
+                 "NEDBD_URL": nbase, "NEDBD_TOKEN": BOARD_TOKEN,
+                 "NEDB_DB": "devnet_fed", "DEVNET_SYSTEM_BOTS": "off",
+                 "DEVNET_AUTH": "aias",
+                 "AIAS_API_BASE": f"http://127.0.0.1:{mport}",
+                 "PATH": os.environ.get("PATH", "")})
+        try:
+            if not wait_http(f"{fbase}/api/config", fed):
+                print("ABORT: federated devnet failed to start — log tail:")
+                print(open(os.path.join(tmp, "fed.log")).read()[-1500:])
+                return 1
+            s, cfg = req(fbase, "GET", "/api/config")
+            ok("H1 config reports auth_mode=aias", cfg.get("auth_mode") == "aias")
+            s, b = req(fbase, "POST", "/api/auth/login",
+                       {"email": "mark@interchained.org",
+                        "password": "wrong"})
+            ok("H2 bad production creds rejected", s == 401)
+            s, b = req(fbase, "POST", "/api/auth/login",
+                       {"email": "mark@interchained.org",
+                        "password": "prod-password"})
+            ok("H3 production login proxied → aias token",
+               s == 200 and b.get("session_token") == MOCK_TOKEN, str(b)[:140])
+            fed_user = (b.get("user") or {})
+            ok("H4 identity provisioned id-stable (v1-user-mark, superadmin)",
+               fed_user.get("id") == "v1-user-mark"
+               and fed_user.get("isSuperAdmin") is True)
+            FH = {"X-Auth-Hash": MOCK_TOKEN}
+            s, b = req(fbase, "POST", "/api/posts",
+                       {"content": "posted as my AiAS production self"}, FH)
+            ok("H5 aias token works on social endpoints",
+               s in (200, 201), f"s={s} {str(b)[:120]}")
+            s, b = req(fbase, "POST", "/api/auth/validate",
+                       {"hash": MOCK_TOKEN})
+            ok("H6 aias token validates on boot path",
+               s == 200 and b.get("valid") is True)
+            fdocs = req(nbase, "POST", "/v1/databases/devnet_fed/query",
+                        {"nql": 'FROM user LIMIT 20'}, headers=NEDB_AUTH)[1].get("rows", [])
+            ok("H7 provisioned user doc lives in NEDB",
+               any("v1-user-mark" in json.dumps(r) for r in fdocs))
+            s, b = req(fbase, "POST", "/api/posts", {"content": "x"},
+                       {"X-Auth-Hash": "garbage-token-zz"})
+            ok("H8 garbage token rejected", s == 401)
+        finally:
+            if fed.poll() is None:
+                fed.send_signal(signal.SIGTERM)
+                try:
+                    fed.wait(timeout=5)
+                except Exception:
+                    fed.kill()
+            mock.shutdown()
 
         print(f"\n{'='*46}\nBOARD: {PASS} passed / {FAIL} failed\n{'='*46}")
         return 0 if FAIL == 0 else 1
