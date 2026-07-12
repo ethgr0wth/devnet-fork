@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { showAiasView, type AiasViewKey } from './aias';
 
 marked.setOptions({
   breaks: true,
@@ -1831,7 +1832,8 @@ class DevNetwork {
   }
 
   private setActiveNav(activeId: string): void {
-    const navIds = ["nav-feed", "nav-explore", "nav-groups", "nav-messages", "nav-notifications", "nav-geppetto", "nav-docs", "nav-admin", "nav-profile"];
+    const navIds = ["nav-feed", "nav-explore", "nav-groups", "nav-messages", "nav-notifications", "nav-geppetto", "nav-docs", "nav-admin", "nav-profile",
+      "nav-aias-playground", "nav-aias-keystone", "nav-aias-artifacts", "nav-aias-image", "nav-aias-agents"];
     navIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
@@ -1882,6 +1884,11 @@ class DevNetwork {
     document.getElementById("nav-geppetto")?.addEventListener("click", () => this.showGeppetto());
     document.getElementById("nav-docs")?.addEventListener("click", () => this.showDocs());
     document.getElementById("nav-profile")?.addEventListener("click", () => this.showProfile());
+
+    // AiAS constellation — v1 surfaces woven inline (v1.2)
+    (["playground", "keystone", "artifacts", "image", "agents"] as AiasViewKey[]).forEach((v) => {
+      document.getElementById(`nav-aias-${v}`)?.addEventListener("click", () => this.showAias(v));
+    });
     
     // Sidebar toggle
     document.getElementById("sidebar-toggle")?.addEventListener("click", () => this.toggleSidebar());
@@ -3614,6 +3621,12 @@ class DevNetwork {
         statusEl.textContent = err.message || "Upload failed";
       }
     });
+  }
+
+  private showAias(view: AiasViewKey): void {
+    this.setActiveNav(`nav-aias-${view}`);
+    this._currentView = `aias-${view}`;
+    void showAiasView(this.container, view);
   }
 
   private showDocs(initialSection?: string): void {
