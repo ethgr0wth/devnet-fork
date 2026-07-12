@@ -154,7 +154,7 @@ function renderConnect(container: HTMLElement, onConnected: () => void): void {
 // ── docked views (link-out until nativized) ──────────────────────────────────
 
 const DOCKED: Record<string, { title: string; blurb: string; path: string; icon: string }> = {
-  keystone:  { title: "KeyStone",  blurb: "Build & ship full apps in the KeyStone IDE. Docked from v1 — native weave is next on the roadmap.", path: "/keystone", icon: "💎" },
+  keystone:  { title: "KeyStone",  blurb: "Build & ship full apps in the KeyStone IDE. Arriving as a native AiOS app — no iframes.", path: "/keystone", icon: "💎" },
   artifacts: { title: "Artifacts", blurb: "The agent artifact generator — already translated to the Portal client, docked here from v1.", path: "/dashboard/artifact-portal", icon: "✨" },
   image:     { title: "Image Studio", blurb: "Generate and edit imagery with your BYOK providers.", path: "/dashboard/image-workstation", icon: "🖼️" },
   agents:    { title: "Agents", blurb: "Your deployed v1 agents. Phase 2 registers them as first-class DevNet citizens through the bot platform.", path: "/dashboard/deployed-agents", icon: "🤖" },
@@ -171,33 +171,6 @@ function renderDocked(container: HTMLElement, key: string, appBase: string): voi
         <a href="${appBase}${d.path}" target="_blank" rel="noopener noreferrer" class="btn btn-gradient w-full py-2.5 inline-block">Open ${esc(d.title)} ↗</a>
         <p class="text-[11px] text-zinc-500 mt-3">Runs on your connected AiAssist account</p>
       </div>
-    </div>`;
-}
-
-// ── KeyStone: iframe-first weave ─────────────────────────────────────────────
-// The v1 KeyStone IDE (QuestsPortal/QuestsWorkspace) framed inline. The
-// session token rides the URL FRAGMENT (#st=…) — fragments never hit
-// servers/logs, and the aias client can adopt it when frame-session support
-// lands there (Mark's call, separate repo). Until aias also serves
-// CSP frame-ancestors for this origin, browsers may refuse the frame —
-// the toolbar's full-screen link is the always-working path either way.
-
-function renderKeystoneFrame(container: HTMLElement, appBase: string): void {
-  const src = `${appBase}/keystone#st=${encodeURIComponent(aias.token || "")}`;
-  container.innerHTML = `
-    <div class="flex flex-col h-full min-h-0">
-      <div class="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 bg-zinc-900/60">
-        <span class="text-sm font-bold flex items-center gap-2">💎 KeyStone</span>
-        <span class="text-[11px] text-zinc-500 hidden sm:inline">v1 IDE, woven inline — blank canvas below means framing isn't enabled on the AiAS server yet</span>
-        <span class="flex-1"></span>
-        <a href="${src}" target="_blank" rel="noopener noreferrer"
-           class="text-xs px-3 py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30">
-          Open full-screen ↗
-        </a>
-      </div>
-      <iframe src="${src}" class="flex-1 w-full border-0 bg-zinc-950"
-              allow="clipboard-read; clipboard-write"
-              referrerpolicy="strict-origin"></iframe>
     </div>`;
 }
 
@@ -453,10 +426,6 @@ export async function showAiasView(container: HTMLElement, view: AiasViewKey): P
   }
   if (view === "playground") {
     await new PlaygroundView(container).mount();
-    return;
-  }
-  if (view === "keystone") {
-    renderKeystoneFrame(container, appBase);
     return;
   }
   renderDocked(container, view, appBase);
