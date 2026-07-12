@@ -1824,7 +1824,11 @@ async def favicon():
 async def get_config():
     return JSONResponse({
         "default_ecosystem_id": DEVONE_ECOSYSTEM_ID,
-        "platform": "devnetwork"
+        "platform": "devnetwork",
+        # AiAS v1.2 weave: where the v1 brain lives. Inline views (Playground,
+        # KeyStone, ...) call it cross-origin with a bridged session — v1's
+        # header-session auth accepts any origin by design.
+        "aias_api_base": os.environ.get("AIAS_API_BASE", "https://api.aiassist.net"),
     })
 
 @app.get("/", response_class=HTMLResponse)
