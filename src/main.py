@@ -2162,6 +2162,12 @@ async def startup():
 async def favicon():
     return FileResponse(BASE_DIR / "static" / "favicon.png", media_type="image/png")
 
+
+@app.get("/favicon.png")
+async def favicon_png():
+    """Transplanted v1 pages reference /favicon.png at the root."""
+    return FileResponse(BASE_DIR / "static" / "favicon.png", media_type="image/png")
+
 @app.get("/api/config")
 async def get_config():
     return JSONResponse({
