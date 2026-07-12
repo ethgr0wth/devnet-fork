@@ -5,7 +5,51 @@
  * (e.g. "/dashboard/tools") map to AiOS apps where possible, and otherwise
  * open the v1 web app in a new tab on the user's production account.
  */
-import React from "react";
+import React, { createContext, useContext, useMemo, useState } from "react";
+
+// ── per-window mini router ───────────────────────────────────────────────────
+// KeyStone (and any multi-view v1 page set) navigates INSIDE its window:
+// QuestsPortal → setLocation("/keystone/:id") → QuestsWorkspace. A window
+// wrapped in <WindowRouter> gets wouter's Link/useLocation/useParams served
+// from window-local state; windows without one fall back to the global
+// app-mapping behavior below.
+
+interface WinNav { path: string; navigate: (to: string) => void; params: Record<string, string>; }
+const WindowNavContext = createContext<WinNav | null>(null);
+
+function matchPattern(pattern: string, path: string): Record<string, string> | null {
+  const pp = pattern.split("/").filter(Boolean);
+  const pa = path.split("?")[0].split("/").filter(Boolean);
+  if (pp.length !== pa.length) return null;
+  const params: Record<string, string> = {};
+  for (let i = 0; i < pp.length; i++) {
+    if (pp[i].startsWith(":")) params[pp[i].slice(1)] = decodeURIComponent(pa[i]);
+    else if (pp[i] !== pa[i]) return null;
+  }
+  return params;
+}
+
+export function WindowRouter({ initial, routes, fallback }: {
+  initial: string;
+  routes: Array<{ pattern: string; component: React.ComponentType<any> }>;
+  fallback?: React.ComponentType<any>;
+}) {
+  const [path, setPath] = useState(initial);
+  let params: Record<string, string> = {};
+  let Comp: React.ComponentType<any> | null = null;
+  for (const r of routes) {
+    const m = matchPattern(r.pattern, path);
+    if (m) { params = m; Comp = r.component; break; }
+  }
+  if (!Comp) Comp = fallback || routes[0].component;
+  const nav = useMemo<WinNav>(() => ({ path, navigate: setPath, params }),
+    [path, JSON.stringify(params)]);
+  return (
+    <WindowNavContext.Provider value={nav}>
+      <Comp key={path} params={params} />
+    </WindowNavContext.Provider>
+  );
+}
 
 let APP_BASE = "https://aiassist.net";
 void (async () => {
@@ -47,6 +91,7 @@ export function navigateV1(href: string): void {
 }
 
 export function Link({ href, to, children, className, onClick, ...rest }: any) {
+  const ctx = useContext(WindowNavContext);
   const target = href || to || "/";
   return (
     <a
@@ -55,7 +100,8 @@ export function Link({ href, to, children, className, onClick, ...rest }: any) {
       onClick={(e) => {
         e.preventDefault();
         onClick?.(e);
-        navigateV1(target);
+        if (ctx) ctx.navigate(target);
+        else navigateV1(target);
       }}
       {...rest}
     >
@@ -65,14 +111,28 @@ export function Link({ href, to, children, className, onClick, ...rest }: any) {
 }
 
 export function useLocation(): [string, (to: string) => void] {
+  const ctx = useContext(WindowNavContext);
+  if (ctx) return [ctx.path, ctx.navigate];
   return ["/", (to: string) => navigateV1(to)];
 }
 
 export function useSearch(): string {
+  const ctx = useContext(WindowNavContext);
+  if (ctx) return ctx.path.split("?")[1] || "";
   return "";
 }
 
-export function useRoute(): [boolean, Record<string, string>] {
+export function useParams<T = Record<string, string>>(): T {
+  const ctx = useContext(WindowNavContext);
+  return (ctx?.params || {}) as T;
+}
+
+export function useRoute(pattern?: string): [boolean, Record<string, string>] {
+  const ctx = useContext(WindowNavContext);
+  if (ctx && pattern) {
+    const m = matchPattern(pattern, ctx.path);
+    return [m !== null, m || {}];
+  }
   return [false, {}];
 }
 
