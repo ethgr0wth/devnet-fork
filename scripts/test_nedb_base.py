@@ -467,6 +467,14 @@ def main():
             s, b = req(fbase, "GET", "/api/user/workspaces",
                        None, {"X-Auth-Hash": "dvs_local_token_x"})
             ok("J5 local-mode tokens refused on v1 surfaces (401)", s == 401)
+            # The 2026-07-12 leak: /api/config once exported AIAS_API_BASE
+            # verbatim, so a loopback upstream made every BROWSER dial
+            # 127.0.0.1. Config must expose only the public app base.
+            s, cfg = req(fbase, "GET", "/api/config")
+            ok("J6 config never leaks the internal API upstream",
+               s == 200 and "aias_api_base" not in cfg
+               and str(cfg.get("aias_app_base", "")).startswith("http"),
+               str(cfg)[:120])
         finally:
             if fed.poll() is None:
                 fed.send_signal(signal.SIGTERM)

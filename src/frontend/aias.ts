@@ -1,14 +1,16 @@
 /**
  * AiAS weave — v1 surfaces as native DevNetwork views.
  *
- * The bridge: aias v1 accepts requests from ANY origin via header sessions
- * (X-Session-Token), so devnet views call it directly — v1 brain, devnet
- * skin, no proxy. The token is connected once (email + password, optional
- * TOTP) and stored client-side, independent of the devnet session.
+ * SAME-ORIGIN (Mark: "every v1 surface belongs on devnet"): the browser
+ * NEVER dials the aias API base directly. Every call is a relative /api
+ * path — devnet serves its own routes and proxies unmatched v1 prefixes
+ * server-side with the caller's federated token. The old direct-dial mode
+ * leaked internal upstream addresses (e.g. 127.0.0.1:8000) into browser
+ * fetches whenever AIAS_API_BASE pointed at loopback. Never again.
  *
- * First native view: Playground (sessions → SSE chat → model settings).
- * KeyStone / Artifacts / Image / Agents dock as link-outs until each gets
- * the same native treatment.
+ * `appBase` remains for LINK-OUTS only (opening the v1 web app in a new
+ * tab) — a public web address, sourced from the sanitized `aias_app_base`
+ * config key, never the API upstream.
  */
 
 const AIAS_TOKEN_KEY = "aias_session_token";
@@ -16,13 +18,16 @@ const AIAS_TOKEN_KEY = "aias_session_token";
 // ── bridge ───────────────────────────────────────────────────────────────────
 
 export class AiasBridge {
-  base = "https://api.aiassist.net";
+  /** API base: always same-origin. Kept as a field for call-site parity. */
+  base = "";
+  /** v1 web app for link-outs (new-tab opens) — NEVER used for fetches. */
+  appBase = "https://aiassist.net";
 
   async init(): Promise<void> {
     try {
       const res = await fetch("/api/config");
       const cfg = await res.json();
-      if (cfg.aias_api_base) this.base = String(cfg.aias_api_base).replace(/\/$/, "");
+      if (cfg.aias_app_base) this.appBase = String(cfg.aias_app_base).replace(/\/$/, "");
       // v2 identity federation: ONE identity. The token you signed in with
       // IS the aias production token — the weave adopts it automatically,
       // so the connect card never appears in federated mode.
@@ -30,7 +35,7 @@ export class AiasBridge {
         const t = localStorage.getItem("devnetwork_hash");
         if (t && !t.startsWith("dvs_")) localStorage.setItem(AIAS_TOKEN_KEY, t);
       }
-    } catch { /* keep default */ }
+    } catch { /* keep defaults */ }
   }
 
   get token(): string | null {
@@ -51,8 +56,13 @@ export class AiasBridge {
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> || {}),
     };
-    if (this.token) headers["X-Session-Token"] = this.token;
-    return fetch(`${this.base}${path}`, { ...init, headers });
+    // Same-origin: relative path; devnet's v1 proxy accepts the token on
+    // either header (parity with the v1 runtime's queryClient).
+    if (this.token) {
+      headers["X-Session-Token"] = this.token;
+      headers["X-Auth-Hash"] = this.token;
+    }
+    return fetch(path, { ...init, headers });
   }
 
   async json<T = any>(path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: T }> {
@@ -425,7 +435,7 @@ export type AiasViewKey = "playground" | "keystone" | "artifacts" | "image" | "a
 
 export async function showAiasView(container: HTMLElement, view: AiasViewKey): Promise<void> {
   await aias.init();
-  const appBase = aias.base.replace("api.", "").replace(/\/$/, "");
+  const appBase = aias.appBase;
   if (!aias.connected) {
     renderConnect(container, () => void showAiasView(container, view));
     return;

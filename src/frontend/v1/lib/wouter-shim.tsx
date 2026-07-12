@@ -56,8 +56,8 @@ void (async () => {
   try {
     const res = await fetch("/api/config");
     const cfg = await res.json();
-    if (cfg.aias_api_base) {
-      APP_BASE = String(cfg.aias_api_base).replace(/\/$/, "").replace("api.", "");
+    if (cfg.aias_app_base) {
+      APP_BASE = String(cfg.aias_app_base).replace(/\/$/, "");
     }
   } catch { /* keep default */ }
 })();
