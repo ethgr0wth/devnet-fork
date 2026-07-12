@@ -2113,7 +2113,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             50% { transform: scale(1.15); opacity: 0.6; }
           }
         `}</style>
-        <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
+        <div className="h-full min-h-full bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-[40%] -left-[20%] w-[80%] h-[80%] rounded-full bg-indigo-500/[0.06] blur-[100px] animate-pulse" />
             <div className="absolute -bottom-[30%] -right-[20%] w-[70%] h-[70%] rounded-full bg-cyan-500/[0.05] blur-[100px] animate-pulse" style={{ animationDelay: "1s" }} />
@@ -3557,7 +3557,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   }
 
   return (
-    <div className="h-screen w-screen max-w-[100vw] bg-background flex flex-col">
+    <div className="h-full w-full bg-background flex flex-col min-h-0">
       <header className="glass-header flex-shrink-0 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
         <div className="flex items-center justify-between px-4 py-2 relative z-10">
