@@ -321,6 +321,12 @@ def main():
                 self._json(404, {"detail": "nope"})
 
             def do_GET(self):
+                # /api/flashcards/* simulates a LEGACY COOKIE-ONLY gate:
+                # it ignores X-Session-Token entirely.
+                if self.path.startswith("/api/flashcards"):
+                    if f"session_id={MOCK_TOKEN}" in (self.headers.get("Cookie") or ""):
+                        return self._json(200, {"decks": [{"id": "d1", "name": "NEDB facts"}]})
+                    return self._json(401, {"detail": "cookie required"})
                 if self.headers.get("X-Session-Token") != MOCK_TOKEN:
                     return self._json(401, {"detail": "no session"})
                 if self.path.startswith("/api/user/me"):
@@ -442,6 +448,25 @@ def main():
             s5, b5 = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
             ok("I9 never-repurpose guard (conflict counted, doc untouched)",
                b5.get("conflicts", 0) >= 1, str(b5)[:120])
+            # ── J. same-origin v1 proxy ─────────────────────────────────
+            print("J. same-origin proxy (v1 surfaces live on devnet)")
+            mock.ws_payload = V1_WORKSPACES  # type: ignore  (I8 mutated it)
+            s, b = req(fbase, "GET", "/api/user/workspaces?limit=100",
+                       None, FH)
+            ok("J1 relative v1 path proxied to production",
+               s == 200 and "ws-acme-1" in json.dumps(b), f"s={s}")
+            s, b = req(fbase, "GET", "/api/flashcards/decks", None, FH)
+            ok("J2 COOKIE-ONLY legacy gate passes via header→cookie conversion",
+               s == 200 and "NEDB facts" in json.dumps(b),
+               f"s={s} {str(b)[:100]}")
+            s, b = req(fbase, "GET", "/api/nonexistent/thing", None, FH)
+            ok("J3 unknown prefix stays 404", s == 404)
+            s, b = req(fbase, "GET", "/api/notifications", None, FH)
+            ok("J4 devnet-own routes take precedence (not proxied)",
+               s == 200)
+            s, b = req(fbase, "GET", "/api/user/workspaces",
+                       None, {"X-Auth-Hash": "dvs_local_token_x"})
+            ok("J5 local-mode tokens refused on v1 surfaces (401)", s == 401)
         finally:
             if fed.poll() is None:
                 fed.send_signal(signal.SIGTERM)

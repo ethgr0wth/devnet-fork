@@ -8,29 +8,22 @@
  * No page edits required.
  */
 
-let API_BASE = "https://api.aiassist.net";
-
-// Resolve the real base once from devnet config (aias_api_base).
-void (async () => {
-  try {
-    const res = await fetch("/api/config");
-    const cfg = await res.json();
-    if (cfg.aias_api_base) API_BASE = String(cfg.aias_api_base).replace(/\/$/, "");
-  } catch { /* keep default */ }
-})();
-
-export const API_BASE_URL = ""; // v1 export parity (unused here)
+// SAME-ORIGIN (Mark: "every v1 surface belongs on devnet"): pages call
+// their original relative /api paths; devnet's backend proxies unmatched
+// v1 prefixes to production server-side with the caller's token forwarded
+// as BOTH X-Session-Token and the legacy session cookie. No CORS, no
+// cross-origin 401 class, no deploy races.
+export const API_BASE_URL = ""; // v1 export parity
 
 function sessionToken(): string | null {
   // Federated mode: the devnet login token IS the aias production token.
-  const t = localStorage.getItem("aias_session_token") ||
-            localStorage.getItem("devnetwork_hash");
+  const t = localStorage.getItem("devnetwork_hash") ||
+            localStorage.getItem("aias_session_token");
   return t && !t.startsWith("dvs_") ? t : null;
 }
 
 export function buildUrl(path: string): string {
-  if (path.startsWith("/")) return `${API_BASE}${path}`;
-  return path;
+  return path; // same-origin: devnet serves or proxies every /api path
 }
 
 export async function apiFetch(
@@ -43,9 +36,8 @@ export async function apiFetch(
     ...rest,
     headers: {
       ...(headers || {}),
-      ...(token ? { "X-Session-Token": token } : {}),
+      ...(token ? { "X-Auth-Hash": token, "X-Session-Token": token } : {}),
     },
-    // cross-origin: header auth, not cookies
   });
 }
 
