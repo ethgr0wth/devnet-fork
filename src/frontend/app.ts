@@ -369,8 +369,10 @@ class DevNetwork {
       localStorage.removeItem(STORAGE_KEY);
     }
 
+    // AiAS v1.2: the entry flow is the v1-style auth landing, not the
+    // fingerprint questionnaire (wizard code kept dormant for parity).
     this.appState.mode = "wizard";
-    this.startWizard();
+    this.showAuthLanding("login");
   }
 
   private async validateHash(hash: string, totpCode?: string): Promise<{user: User | null, requires_2fa?: boolean}> {
@@ -489,7 +491,7 @@ class DevNetwork {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(DEVICE_TOKEN_KEY);
       this.appState.mode = "wizard";
-      this.startWizard();
+      this.showAuthLanding("login");
     });
 
     codeInput.focus();
@@ -523,6 +525,161 @@ class DevNetwork {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // ── AiAS v1.2 front door: email + password (+ TOTP) sessions ──────────────
+  // Replaces the fingerprint questionnaire as the entry flow (Mark,
+  // 2026-07-12). Session tokens ride the same X-Auth-Hash header the whole
+  // app already sends, so nothing beyond auth changes.
+
+  private showAuthLanding(mode: "login" | "signup" = "login"): void {
+    const isLogin = mode === "login";
+    this.container.innerHTML = `
+      <div class="relative flex items-center justify-center px-3 sm:px-4" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+        <video autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;"></video>
+        <div class="absolute inset-0 bg-zinc-950/80" style="z-index:1;"></div>
+
+        <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
+          <div class="slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/70 border border-zinc-700/50 rounded-xl p-5 sm:p-7">
+            <div class="text-center mb-5">
+              <div class="relative inline-flex items-center justify-center mb-3">
+                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
+                <img src="/static/logo-icon-dark.png" alt="AiAS" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(16,185,129,0.35));">
+              </div>
+              <h1 class="text-2xl sm:text-3xl font-bold mb-1"><span class="gradient-text glow-text">AiAS</span></h1>
+              <p class="text-zinc-400 text-sm">Your team — human and AI — in one space.</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1 mb-5 p-1 rounded-lg bg-zinc-800/60 border border-zinc-700/40">
+              <button id="auth-tab-login" class="py-2 rounded-md text-sm font-semibold transition-colors ${isLogin ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"}">Sign in</button>
+              <button id="auth-tab-signup" class="py-2 rounded-md text-sm font-semibold transition-colors ${!isLogin ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"}">Create account</button>
+            </div>
+
+            <form id="auth-form" class="space-y-3 text-left">
+              ${!isLogin ? `
+              <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">Display name</label>
+                <input type="text" name="display_name" class="input" placeholder="How should the team know you?" required minlength="2" maxlength="32" autocomplete="nickname" />
+              </div>` : ""}
+              <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">Email</label>
+                <input type="email" name="email" class="input" placeholder="you@company.com" required autocomplete="${isLogin ? "email" : "email"}" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">Password</label>
+                <input type="password" name="password" class="input" placeholder="${isLogin ? "Your password" : "At least 8 characters"}" required minlength="8" autocomplete="${isLogin ? "current-password" : "new-password"}" />
+              </div>
+              <p id="auth-error" class="hidden text-sm text-red-400"></p>
+              <button type="submit" id="auth-submit" class="btn btn-gradient w-full text-base py-3">
+                ${isLogin ? "Sign in" : "Create account"}
+              </button>
+            </form>
+
+            <p class="mt-4 text-center text-[11px] text-zinc-500">AiAS v1.2 · powered by NEDB · Interchained</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const bgVideo = this.container.querySelector("video");
+    if (bgVideo) {
+      const s = document.createElement("source");
+      s.src = "/static/devnet-intro.mp4";
+      s.type = "video/mp4";
+      bgVideo.appendChild(s);
+      bgVideo.load();
+    }
+
+    document.getElementById("auth-tab-login")!.addEventListener("click", () => this.showAuthLanding("login"));
+    document.getElementById("auth-tab-signup")!.addEventListener("click", () => this.showAuthLanding("signup"));
+
+    document.getElementById("auth-form")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target as HTMLFormElement;
+      const fd = new FormData(form);
+      const btn = document.getElementById("auth-submit") as HTMLButtonElement;
+      btn.disabled = true;
+      btn.textContent = isLogin ? "Signing in…" : "Creating account…";
+      try {
+        const body: Record<string, string> = {
+          email: String(fd.get("email") || ""),
+          password: String(fd.get("password") || ""),
+        };
+        if (!isLogin) body.display_name = String(fd.get("display_name") || "");
+        const res = await fetch(isLogin ? "/api/auth/login" : "/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.requires_2fa && data.pending_token) {
+          this.showAuthTwoFactor(data.pending_token);
+          return;
+        }
+        if (res.ok && data.success && data.session_token) {
+          localStorage.setItem(STORAGE_KEY, data.session_token);
+          this.appState = { mode: "app", user: data.user, hash: data.session_token };
+          this.showApp();
+          return;
+        }
+        this.showAuthError(data.error || "Something went wrong. Please try again.");
+      } catch {
+        this.showAuthError("Network error. Please try again.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = isLogin ? "Sign in" : "Create account";
+      }
+    });
+  }
+
+  private showAuthError(message: string): void {
+    const el = document.getElementById("auth-error");
+    if (el) {
+      el.textContent = message;
+      el.classList.remove("hidden");
+    }
+  }
+
+  private showAuthTwoFactor(pendingToken: string): void {
+    this.container.innerHTML = `
+      <div class="relative flex items-center justify-center px-3 sm:px-4" style="height:100dvh;height:100vh;">
+        <div class="absolute inset-0 bg-zinc-950" style="z-index:0;"></div>
+        <div class="max-w-sm w-full relative" style="z-index:2;">
+          <div class="slide-up backdrop-blur-md bg-zinc-900/70 border border-zinc-700/50 rounded-xl p-6 text-center">
+            <h2 class="text-xl font-bold mb-1">Two-factor code</h2>
+            <p class="text-zinc-400 text-sm mb-4">Enter the 6-digit code from your authenticator app.</p>
+            <form id="auth-2fa-form" class="space-y-3">
+              <input type="text" name="code" class="input font-mono text-center text-xl tracking-widest" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code" required />
+              <p id="auth-error" class="hidden text-sm text-red-400"></p>
+              <button type="submit" class="btn btn-gradient w-full py-3">Verify</button>
+            </form>
+            <button id="auth-2fa-back" class="mt-3 text-xs text-zinc-500 hover:text-zinc-300">← Back to sign in</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById("auth-2fa-back")!.addEventListener("click", () => this.showAuthLanding("login"));
+    document.getElementById("auth-2fa-form")!.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = String(new FormData(e.target as HTMLFormElement).get("code") || "");
+      try {
+        const res = await fetch("/api/auth/login-2fa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pending_token: pendingToken, code }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.session_token) {
+          localStorage.setItem(STORAGE_KEY, data.session_token);
+          this.appState = { mode: "app", user: data.user, hash: data.session_token };
+          this.showApp();
+          return;
+        }
+        this.showAuthError(data.error || "Invalid code.");
+      } catch {
+        this.showAuthError("Network error. Please try again.");
+      }
+    });
   }
 
   private startWizard(): void {

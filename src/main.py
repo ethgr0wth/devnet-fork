@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import hmac
 import subprocess
 import uuid
 import re
@@ -149,7 +150,13 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 REDIS_HOST = os.environ.get("DEVNET_REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("DEVNET_REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("DEVNET_REDIS_DB", "11"))
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+# AiAS v1.2: storage is env-switched (DEVNET_STORAGE=nedb|redis, default nedb).
+# NEDB mode rides the battle-tested RedisOnNedb shim from the AiAS migration.
+try:
+    from src import storage as _storage
+except ImportError:  # script-style execution with src/ on sys.path
+    import storage as _storage
+redis_client = _storage.make_client()
 
 AUTH_SALT = os.environ.get("AUTH_SALT", "devnetwork_professional_networking_salt_2026")
 
@@ -160,14 +167,19 @@ BOT_TOKEN_PREFIX = "dvn_bot_"
 print("\n" + "="*50)
 print("  DevNetwork Configuration")
 print("="*50)
-print(f"  Redis Host: {REDIS_HOST}")
-print(f"  Redis Port: {REDIS_PORT}")
-print(f"  Redis DB:   {REDIS_DB}")
+print(f"  Storage:    {_storage.STORAGE_MODE}")
+if _storage.STORAGE_MODE == "redis":
+    print(f"  Redis Host: {REDIS_HOST}")
+    print(f"  Redis Port: {REDIS_PORT}")
+    print(f"  Redis DB:   {REDIS_DB}")
+else:
+    print(f"  NEDBD URL:  {os.environ.get('NEDBD_URL', 'http://localhost:7070')}")
+    print(f"  NEDB DB:    {os.environ.get('NEDB_DB', 'devnet')}")
 try:
     redis_client.ping()
-    print(f"  Redis:      Connected")
+    print(f"  Storage:    Connected")
 except Exception as e:
-    print(f"  Redis:      FAILED - {e}")
+    print(f"  Storage:    FAILED - {e}")
 print("="*50 + "\n")
 
 class ConnectionManager:
@@ -253,10 +265,175 @@ def get_user_by_hash(hash_value: str) -> Optional[dict]:
             return json.loads(str(user_data))
     return None
 
+
+# ── AiAS v1 auth (email + password + optional TOTP → session tokens) ─────────
+# The v1.2 front door (Mark, 2026-07-12): the fingerprint questionnaire is
+# retired from the entry flow in favor of AiAS v1's proven login/register
+# pattern. Session tokens ride the SAME X-Auth-Hash header the whole API
+# already uses — get_current_user resolves sessions first, so all existing
+# endpoints work unchanged. Legacy fingerprint auth stays functional for
+# devnet.Interchained.org parity (redis mode).
+
+SESSION_TTL_S = int(os.environ.get("DEVNET_SESSION_TTL_S", str(30 * 86400)))
+LOGIN_2FA_TTL_S = 300
+_PBKDF2_ITERS = 200_000
+
+
+def _hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERS)
+    return f"pbkdf2${_PBKDF2_ITERS}${salt.hex()}${dk.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        scheme, iters, salt_hex, hash_hex = stored.split("$")
+        if scheme != "pbkdf2":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(),
+                                 bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except Exception:
+        return False
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _mint_session(user_id: str) -> str:
+    token = "dvs_" + uuid.uuid4().hex + uuid.uuid4().hex
+    redis_client.set(f"session:{token}", user_id, ex=SESSION_TTL_S)
+    return token
+
+
+def get_user_by_session(token: str) -> Optional[dict]:
+    if not token or not token.startswith("dvs_"):
+        return None
+    user_id = redis_client.get(f"session:{token}")
+    if not user_id:
+        return None
+    user_data = redis_client.get(f"user:{user_id}")
+    return json.loads(str(user_data)) if user_data else None
+
+
+@app.post("/api/auth/signup")
+async def auth_v1_signup(request: Request):
+    """AiAS v1-pattern registration: email + password + display name."""
+    data = await request.json()
+    email = _normalize_email(data.get("email"))
+    password = data.get("password") or ""
+    display_name = normalize_username(data.get("display_name") or "")
+
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        return JSONResponse({"success": False, "error": "A valid email is required."}, status_code=400)
+    if len(password) < 8:
+        return JSONResponse({"success": False, "error": "Password must be at least 8 characters."}, status_code=400)
+    if not display_name:
+        return JSONResponse({"success": False, "error": "Display name is required."}, status_code=400)
+    if redis_client.get(f"user:email:{email}"):
+        return JSONResponse({"success": False, "error": "An account with this email already exists."}, status_code=400)
+    if get_user_by_display_name(display_name):
+        return JSONResponse({"success": False, "error": "Username already taken. Please choose a different name."}, status_code=400)
+
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    user = {
+        "id": user_id,
+        "displayName": display_name,
+        "email": email,
+        "password": _hash_password(password),
+        "auth_scheme": "v1",
+        "bio": data.get("bio", ""),
+        "field": data.get("field", ""),
+        "experience": "",
+        "skills": [],
+        "focus": "",
+        "interests": [],
+        "teamPreference": "",
+        "talents": [],
+        "portfolio": data.get("portfolio", ""),
+        "age_confirmed": True,
+        "twoFactorEnabled": False,
+        "createdAt": now,
+        "lastSeen": now,
+        "isSuperAdmin": False,
+    }
+    pipeline = redis_client.pipeline()
+    pipeline.set(f"user:{user_id}", json.dumps(user))
+    pipeline.set(f"user:name:{display_name}", user_id)
+    pipeline.set(f"user:email:{email}", user_id)
+    pipeline.incr("stats:users:count")
+    pipeline.execute()
+
+    token = _mint_session(user_id)
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/login")
+async def auth_v1_login(request: Request):
+    """AiAS v1-pattern login. Returns requires_2fa + pending_token when the
+    account has TOTP enabled, otherwise a session token directly."""
+    data = await request.json()
+    email = _normalize_email(data.get("email"))
+    password = data.get("password") or ""
+
+    user_id = redis_client.get(f"user:email:{email}") if email else None
+    user_data = redis_client.get(f"user:{user_id}") if user_id else None
+    user = json.loads(str(user_data)) if user_data else None
+    if not user or not _verify_password(password, user.get("password") or ""):
+        return JSONResponse({"success": False, "error": "Invalid email or password."}, status_code=401)
+    if redis_client.sismember("platform:banned", user.get("id", "")):
+        return JSONResponse({"success": False, "error": "Account unavailable."}, status_code=403)
+
+    if user.get("twoFactorEnabled") and user.get("totp_secret"):
+        pending = "dvp_" + uuid.uuid4().hex
+        redis_client.set(f"login2fa:{pending}", user["id"], ex=LOGIN_2FA_TTL_S)
+        return JSONResponse({"success": True, "requires_2fa": True, "pending_token": pending})
+
+    token = _mint_session(user["id"])
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/login-2fa")
+async def auth_v1_login_2fa(request: Request):
+    data = await request.json()
+    pending = data.get("pending_token") or ""
+    code = (data.get("code") or "").strip()
+
+    user_id = redis_client.get(f"login2fa:{pending}")
+    if not user_id:
+        return JSONResponse({"success": False, "error": "Verification session expired. Sign in again."}, status_code=401)
+    user_data = redis_client.get(f"user:{user_id}")
+    user = json.loads(str(user_data)) if user_data else None
+    if not user or not user.get("totp_secret"):
+        return JSONResponse({"success": False, "error": "2FA is not configured."}, status_code=400)
+
+    totp = pyotp.TOTP(str(user["totp_secret"]))
+    if not (len(code) == 6 and code.isdigit() and totp.verify(code, valid_window=1)):
+        return JSONResponse({"success": False, "error": "Invalid verification code."}, status_code=401)
+
+    redis_client.delete(f"login2fa:{pending}")
+    token = _mint_session(user["id"])
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/signout")
+async def auth_v1_signout(request: Request):
+    token = request.headers.get("X-Auth-Hash", "")
+    if token.startswith("dvs_"):
+        redis_client.delete(f"session:{token}")
+    return JSONResponse({"success": True})
+
 def get_current_user(auth_hash: str) -> Optional[dict]:
+    """One credential header, two schemes: AiAS v1 session tokens (dvs_*)
+    resolve first; legacy fingerprint hashes keep working for parity."""
     if not auth_hash:
         return None
-    user = get_user_by_hash(auth_hash)
+    user = get_user_by_session(auth_hash) or get_user_by_hash(auth_hash)
     if user and redis_client.sismember("platform:banned", user.get("id", "")):
         return None
     return user
@@ -1582,8 +1759,9 @@ def handle_wizard_step(user: dict, conv_id: str, content: str, wizard_state: dic
 
 async def bot_dm_subscriber():
     """Background task to subscribe to Redis pub/sub for bot DMs (multi-instance support)"""
-    import redis as sync_redis
-    pubsub = sync_redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB).pubsub()
+    # Storage-mode aware: real Redis pubsub in redis mode, in-process queue
+    # under NEDB (single-worker doctrine — production.sh pins WORKERS=1).
+    pubsub = _storage.make_pubsub()
     pubsub.psubscribe("bot:dm:*")
     
     print("[PUBSUB] Bot DM subscriber started")
@@ -1620,17 +1798,23 @@ async def startup():
     bootstrap_ecosystems()
     init_geppetto()
     asyncio.create_task(bot_dm_subscriber())
-    try:
-        import importlib.util, pathlib
-        _sb_path = pathlib.Path(__file__).parent / "system_bots.py"
-        _sb_spec = importlib.util.spec_from_file_location("system_bots", _sb_path)
-        _sb = importlib.util.module_from_spec(_sb_spec)
-        _sb_spec.loader.exec_module(_sb)
-        app.state.system_bots_module = _sb
-        _sb.set_user_ws_connections(USER_WS_CONNECTIONS)
-        asyncio.create_task(_sb.run_system_bots(ws_manager))
-    except Exception as e:
-        print(f"[SystemBot] Failed to start system bots: {e}")
+    # System bots are demo/simulation bots from the original DevNetwork —
+    # OFF by default for AiAS v1.2 (Mark, 2026-07-12). Real agents arrive in
+    # Phase 2 through the bot-platform APIs instead.
+    if os.environ.get("DEVNET_SYSTEM_BOTS", "off").lower() in ("on", "1", "true"):
+        try:
+            import importlib.util, pathlib
+            _sb_path = pathlib.Path(__file__).parent / "system_bots.py"
+            _sb_spec = importlib.util.spec_from_file_location("system_bots", _sb_path)
+            _sb = importlib.util.module_from_spec(_sb_spec)
+            _sb_spec.loader.exec_module(_sb)
+            app.state.system_bots_module = _sb
+            _sb.set_user_ws_connections(USER_WS_CONNECTIONS)
+            asyncio.create_task(_sb.run_system_bots(ws_manager))
+        except Exception as e:
+            print(f"[SystemBot] Failed to start system bots: {e}")
+    else:
+        print("[SystemBot] Disabled via DEVNET_SYSTEM_BOTS=off")
 
 @app.get("/favicon.ico")
 async def favicon():
@@ -1670,9 +1854,19 @@ async def validate_auth(request: Request):
     data = await request.json()
     hash_value = data.get("hash")
     totp_code = data.get("totp_code")
-    
+
     if not hash_value:
         raise HTTPException(status_code=400, detail="Hash required")
+
+    # AiAS v1 sessions (dvs_*) are post-authentication credentials — they
+    # validate directly, no 2FA re-challenge on boot.
+    if str(hash_value).startswith("dvs_"):
+        session_user = get_user_by_session(str(hash_value))
+        if session_user and not redis_client.sismember(
+                "platform:banned", session_user.get("id", "")):
+            session_user.pop("password", None)
+            return JSONResponse({"valid": True, "user": session_user})
+        return JSONResponse({"valid": False, "error": "Session expired. Please sign in again."}, status_code=401)
     
     user = get_user_by_hash(hash_value)
     if user:
