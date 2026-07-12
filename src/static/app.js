@@ -24000,6 +24000,27 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     if (s < 86400) return `${Math.floor(s / 3600)}h`;
     return `${Math.floor(s / 86400)}d`;
   }
+  async function readSse(res, onEvent) {
+    if (!res.body) return;
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const frames = buf.split("\n\n");
+      buf = frames.pop() || "";
+      for (const f of frames) {
+        const line = f.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        try {
+          onEvent(JSON.parse(line.slice(6)));
+        } catch {
+        }
+      }
+    }
+  }
   function renderConnect(container, onConnected) {
     container.innerHTML = `
     <div class="flex items-center justify-center h-full px-4">
@@ -24258,38 +24279,22 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           this.renderMessages();
           return;
         }
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = "";
-        for (; ; ) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const frames = buf.split("\n\n");
-          buf = frames.pop() || "";
-          for (const f of frames) {
-            const line = f.split("\n").find((l) => l.startsWith("data: "));
-            if (!line) continue;
-            try {
-              const ev = JSON.parse(line.slice(6));
-              if (ev.type === "chunk" && ev.content) {
-                asst.content += ev.content;
-                this.renderMessages();
-              } else if (ev.type === "tool_start") {
-                this.status(`Running ${ev.count} tool${ev.count === 1 ? "" : "s"}\u2026`);
-              } else if (ev.type === "tool_exec") {
-                this.status(`Tool: ${ev.tool_name}\u2026`);
-              } else if (ev.type === "tool_done") {
-                this.status("Streaming\u2026");
-              } else if (ev.type === "error") {
-                asst.content += `
+        await readSse(res, (ev) => {
+          if (ev.type === "chunk" && ev.content) {
+            asst.content += ev.content;
+            this.renderMessages();
+          } else if (ev.type === "tool_start") {
+            this.status(`Running ${ev.count} tool${ev.count === 1 ? "" : "s"}\u2026`);
+          } else if (ev.type === "tool_exec") {
+            this.status(`Tool: ${ev.tool_name}\u2026`);
+          } else if (ev.type === "tool_done") {
+            this.status("Streaming\u2026");
+          } else if (ev.type === "error") {
+            asst.content += `
 \u26A0\uFE0F ${ev.message || "stream error"}`;
-                this.renderMessages();
-              }
-            } catch {
-            }
+            this.renderMessages();
           }
-        }
+        });
         await this.select(this.current.id);
       } catch (e) {
         asst.content += "\n\u26A0\uFE0F Network error.";
@@ -25185,7 +25190,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
       "div",
       {
-        className: "relative flex h-full flex-col overflow-hidden bg-[#0a0a0f]",
+        className: "relative flex h-full w-full flex-col overflow-hidden bg-[#0a0a0f]",
         style: { backgroundImage: "radial-gradient(80% 60% at 20% 0%, rgba(99,102,241,.14), transparent 60%), radial-gradient(70% 55% at 90% 100%, rgba(16,185,129,.10), transparent 60%)" },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "z-10 flex items-center gap-3 border-b border-white/10 px-4 py-2 backdrop-blur", children: [
@@ -25265,15 +25270,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     );
   }
   var root = null;
+  var mounted = null;
+  var prevClassName = null;
   async function mountAios(container, opts) {
     await aias.init();
     container.innerHTML = "";
+    mounted = container;
+    prevClassName = container.className;
+    container.className = "relative h-full w-full overflow-hidden";
     root = (0, import_client.createRoot)(container);
     root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AiosShell, { opts }));
   }
   function unmountAios() {
     root?.unmount();
     root = null;
+    if (mounted && prevClassName !== null) mounted.className = prevClassName;
+    mounted = null;
+    prevClassName = null;
   }
 
   // src/frontend/app.ts
