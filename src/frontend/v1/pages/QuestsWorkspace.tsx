@@ -2790,7 +2790,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+        className="qw-chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{ flex: "1 1 0%", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden" }}
       >
         <div className={`qw-chat-list ${compact ? "compact" : ""} min-w-0 max-w-full overflow-hidden`}>
