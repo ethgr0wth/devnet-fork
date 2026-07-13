@@ -2294,52 +2294,64 @@
 .qw-pkg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
-/* Height-chain safety net — every panel fills its rail */
+/* Height-chain contract — exact panel roots only (never target every div) */
 .qw-agent-rail { min-height: 0; }
-.qw-agent-rail > [role="tablist"] { flex-shrink: 0; }
+.qw-agent-rail > [role="tablist"] { flex: 0 0 auto; }
+
+/* Radix tab content is the only flex child allowed to grow. */
 .qw-agent-rail [role="tabpanel"] {
   flex: 1 1 0% !important;
   min-height: 0 !important;
-  height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
 }
-/* Each panel's motion root fills the tabpanel */
-.qw-agent-rail [role="tabpanel"] > [data-testid^="tab-content-"],
-.qw-agent-rail [role="tabpanel"] > .qw-panel-body,
-.qw-agent-rail [role="tabpanel"] > div {
+
+/* Each actual panel root owns the remaining rail height. */
+.qw-agent-rail [role="tabpanel"] > .qw-chat-root,
+.qw-agent-rail [role="tabpanel"] > [data-testid="tab-content-terminal"],
+.qw-agent-rail [role="tabpanel"] > [data-testid="tab-content-deploy"],
+.qw-agent-rail [role="tabpanel"] > [data-testid="tab-content-ledger"],
+.qw-agent-rail [role="tabpanel"] > [data-testid="panel-artifacts-ks"],
+.qw-agent-rail [role="tabpanel"] > [data-testid="tab-content-settings"] {
   flex: 1 1 0% !important;
   min-height: 0 !important;
-  height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
 }
-/* Artifacts inner scroll region */
-.qw-agent-rail [data-testid="panel-artifacts-ks"] {
-  flex: 1 1 0% !important;
-  min-height: 0 !important;
-  overflow-y: auto !important;
-}
-/* Chat specifics */
+
+/* Chat: exactly one growing child — message history. */
 .qw-chat-root {
   flex: 1 1 0% !important;
   min-height: 0 !important;
-  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
-.qw-chat-root > div {
-  flex: 1 1 0%;
-  min-height: 0;
+.qw-chat-status { flex: 0 0 auto !important; }
+.qw-chat-scroll {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
-.qw-chat-status { flex-shrink: 0; }
-.qw-composer { flex-shrink: 0; }
-/* Terminal splits */
-.qw-agent-rail [data-testid="tab-content-terminal"] > div { flex: 1 1 0%; min-height: 0; }
-/* Ledger / deploy / settings scroll bodies */
-.qw-agent-rail [data-testid="tab-content-ledger"] > div:last-child,
-.qw-agent-rail [data-testid="tab-content-deploy"] > div:last-child,
-.qw-agent-rail [data-testid="tab-content-settings"] > div {
-  flex: 1 1 0%;
-  min-height: 0;
+.qw-composer { flex: 0 0 auto !important; }
+
+/* Terminal: header and package row are fixed; editor/output middle grows. */
+.qw-panel-head-row,
+.qw-pkg-row { flex: 0 0 auto !important; }
+.qw-agent-rail [data-testid="tab-content-terminal"] > .flex-1 {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+.qw-term-output { min-height: 0 !important; }
+
+/* These existing scroll containers are the one growing child of their panels. */
+.qw-agent-rail [data-testid="tab-content-deploy"] > .flex-1,
+.qw-agent-rail [data-testid="tab-content-ledger"] > .flex-1,
+.qw-agent-rail [data-testid="panel-artifacts-ks"],
+.qw-agent-rail [data-testid="tab-content-settings"] {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
 }
