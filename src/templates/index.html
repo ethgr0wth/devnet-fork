@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>DevNetwork</title>
+    <title>AiAssist Secure</title>
+    <meta name="description" content="AiAssist Secure — a security-first network for builders. Real-time communities, bots, and AI workspaces. No paywalls. No gatekeeping.">
+    <meta property="og:title" content="AiAssist Secure">
+    <meta property="og:description" content="A security-first network for builders. Real-time communities, bots, and AI workspaces. No paywalls. No gatekeeping.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/static/favicon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="AiAssist Secure">
+    <meta name="twitter:description" content="A security-first network for builders. Real-time communities, bots, and AI workspaces.">
+    <meta name="twitter:image" content="/static/favicon.png">
     <link rel="stylesheet" href="/static/styles.css?v={{ css_ver }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,6 +52,35 @@
         .bg-emerald-600 .dm-markdown pre { background: rgba(0,0,0,0.2) !important; }
         .bg-emerald-600 .dm-markdown pre code { color: #fff !important; }
         .bg-emerald-600 .dm-markdown a { color: #a7f3d0 !important; }
+
+        /* AiAssist Secure wordmark — mirrors the playground opening scene */
+        @keyframes aceShimmerLoad {
+            0% { background-position: 200% center; }
+            100% { background-position: -200% center; }
+        }
+        .ace-text-shimmer-load {
+            background: linear-gradient(90deg, rgba(6,182,212,0.9) 0%, rgba(139,92,246,0.8) 25%, rgba(236,72,153,0.7) 50%, rgba(139,92,246,0.8) 75%, rgba(6,182,212,0.9) 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: aceShimmerLoad 3s linear infinite;
+        }
+        @keyframes holoFlow {
+            0% { background-position: 0% 50%, 0% 50%; }
+            50% { background-position: 0% 50%, 100% 50%; }
+            100% { background-position: 0% 50%, 0% 50%; }
+        }
+        .holo-outline {
+            border: 1px solid transparent !important;
+            background-image:
+                linear-gradient(rgba(24,24,27,0.82), rgba(24,24,27,0.82)),
+                linear-gradient(110deg, rgba(6,182,212,0.65), rgba(139,92,246,0.55), rgba(236,72,153,0.45), rgba(139,92,246,0.55), rgba(6,182,212,0.65));
+            background-origin: border-box;
+            background-clip: padding-box, border-box;
+            background-size: 100% 100%, 300% 100%;
+            animation: holoFlow 6s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="bg-zinc-950">
@@ -57,8 +95,15 @@
                 </div>
                 <div class="logo-plaque">
                     <div class="logo-plaque-inner">
-                        <img src="/static/logo-icon-dark.png" alt="DevNetwork" class="logo-plaque-img" width="24" height="24">
-                        <span class="logo-plaque-text">devnet</span>
+                        <img src="/static/favicon.png" alt="AiAssist Secure" class="logo-plaque-img" width="24" height="24" style="filter: drop-shadow(0 0 4px rgba(6,182,212,0.8)) drop-shadow(0 0 10px rgba(139,92,246,0.5));">
+                        <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                            <span class="logo-plaque-text" style="letter-spacing: 0.5px;"><span>Ai</span><span style="font-weight: 400;">Assist</span></span>
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                                <span style="height: 1px; width: 12px; background: linear-gradient(90deg, transparent, rgba(6,182,212,0.5), transparent);"></span>
+                                <span class="ace-text-shimmer-load" style="font-size: 7px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; line-height: 1;">Secure</span>
+                                <span style="height: 1px; width: 12px; background: linear-gradient(90deg, transparent, rgba(139,92,246,0.5), transparent);"></span>
+                            </span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -219,7 +264,7 @@
                 <span id="status-user" class="hidden"></span>
             </div>
             <div class="flex items-center gap-3">
-                <span style="display: flex; align-items: center; gap: 4px;"><img src="/static/logo-icon-dark.png" alt="DevNetwork" style="height: 12px; object-fit: contain; opacity: 0.6;"> v2.2.2</span>
+                <span style="display: flex; align-items: center; gap: 4px;"><img src="/static/favicon.png" alt="AiAssist Secure" style="height: 12px; object-fit: contain; opacity: 0.6;"> AiAssist Secure v2.2.2</span>
             </div>
         </div>
     </div>

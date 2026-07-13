@@ -407,7 +407,6 @@ export default function QuestsWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("chat");
-  const [leftRailTab, setLeftRailTab] = useState<"files" | "artifacts" | "settings">("files");
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<"keystone" | "focus">("keystone");
@@ -2739,73 +2738,21 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   };
 
   const renderChatPanel = (compact: boolean = false) => (
-    // Anchored to the nearest positioned ancestor. Every layout-critical
-    // property is set INLINE so the column fills its box even if a utility
-    // class is missing from the prebuilt stylesheet or a merge drops one:
-    // the desktop tab chain collapsed exactly this way (missing minHeight).
-    <div
-      className="absolute inset-0 flex flex-col overflow-hidden"
-      style={{
-        position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        minHeight: 0, height: "100%",
-        background: "linear-gradient(180deg, rgba(249,99,2,.04), transparent 140px)",
-      }}
-    >
-      <div
-        className="flex items-center justify-between border-b border-white/10"
-        style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(0,0,0,.35)" }}
-        data-testid="chat-status-bar"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AI CONSOLE</span>
-          <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: runtimeSessionId ? "#22c55e" : "#6b7280" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
-        </div>
-        <div className="flex items-center gap-3 font-mono text-muted-foreground" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
-          <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
-          {editorMode === "keystone" && (
-            <span style={{ color: readOnlyMode ? "#fbbf24" : "#34d399" }}>{readOnlyMode ? "READ" : "R/W"}</span>
-          )}
-          <span data-testid="status-msg-count">{messages.length} MSG</span>
-        </div>
-      </div>
+    // Anchored to the nearest positioned ancestor (both call sites are
+    // `relative` with a definite height) so the chat column can never
+    // inherit a broken percentage chain — it always fills its tab exactly.
+    <div className="absolute inset-0 flex flex-col overflow-hidden">
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
-        style={{ flex: "1 1 0%", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}
       >
         <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
-            <div className="py-10 px-4" data-testid="chat-empty-state">
-              <div className="max-w-sm mx-auto border border-white/10 rounded-sm overflow-hidden" style={{ background: "rgba(0,0,0,.3)" }}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10" style={{ background: "rgba(249,99,2,.08)" }}>
-                  <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
-                  <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AIOS // AI CONSOLE</span>
-                </div>
-                <div className="p-3">
-                  <p className="font-mono text-xs text-muted-foreground">Reads your files. Writes code. Applies edits in place.</p>
-                  <p className="font-mono text-muted-foreground mt-1" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.08em" }}>SELECT A COMMAND OR TYPE BELOW</p>
-                  <div className="mt-3 space-y-1">
-                    {[
-                      { k: "F1", label: "EXPLAIN THIS CODEBASE", fill: "Explain this codebase" },
-                      { k: "F2", label: "FIX A BUG", fill: "Fix a bug: " },
-                      { k: "F3", label: "BUILD A FEATURE", fill: "Build a feature: " },
-                    ].map((c) => (
-                      <button
-                        key={c.k}
-                        onClick={() => { if (textareaRef.current) { textareaRef.current.value = c.fill; textareaRef.current.focus(); } }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-left"
-                        style={{ borderLeft: "2px solid #f96302" }}
-                        data-testid={`key-${c.k.toLowerCase()}`}
-                      >
-                        <span className="font-mono font-bold flex-shrink-0" style={{ fontSize: 10, color: "#ff8c1a" }}>{c.k}</span>
-                        <span className="font-mono text-foreground" style={{ fontSize: 11, letterSpacing: "0.06em" }}>{c.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <div className="text-center py-12 text-muted-foreground">
+              <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">Start a conversation with your AI assistant</p>
+              <p className="text-xs mt-1">Ask for help with code, debugging, or building features</p>
             </div>
           ) : (
             messages.map((msg) => {
@@ -2819,24 +2766,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   data-testid={`message-${msg.id}`}
                   data-role={msg.role}
                 >
-                  <div
-                    className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0"
-                    style={isUser
-                      ? { background: "#f96302" }
-                      : { background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}
-                  >
-                    {isUser ? <User className="w-3.5 h-3.5 text-white" /> : <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isUser ? "bg-indigo-600" : "bg-indigo-600/20"
+                  }`}>
+                    {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-indigo-400" />}
                   </div>
                   <div
-                    className="rounded-sm px-3 py-2 min-w-0 overflow-hidden break-words text-foreground"
-                    style={{
-                      flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere",
-                      background: isUser ? "rgba(249,99,2,.08)" : "rgba(255,255,255,.03)",
-                      border: "1px solid rgba(255,255,255,.06)",
-                      borderLeft: isUser ? "2px solid #f96302" : "2px solid rgba(255,140,26,.4)",
-                    }}
+                    className={`rounded-lg px-4 py-2 min-w-0 overflow-hidden break-words ${
+                      isUser ? "bg-indigo-600 text-white" : "bg-muted text-foreground"
+                    }`}
+                    style={{ flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere" }}
                   >
-                    <div className="font-mono mb-1" style={{ fontSize: 9, letterSpacing: "0.16em", color: isUser ? "#ff8c1a" : "rgba(255,255,255,.4)" }}>{isUser ? "USR" : "AIOS"}</div>
+                    <div className="text-[10px] opacity-50 mb-1">{isUser ? "You" : "AI"}</div>
                     {isUser ? (
                       <p className="text-sm break-words" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}>{msg.content}</p>
                     ) : (() => {
@@ -3127,13 +3068,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               animate={{ opacity: 1, y: 0 }}
               className="flex gap-3"
             >
-              <div className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0" style={{ background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}>
-                <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
+              <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-indigo-400" />
               </div>
-              <div className="rounded-sm px-3 py-2" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderLeft: "2px solid #f96302" }}>
+              <div className="bg-muted rounded-lg px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#ff8c1a" }} />
-                  <span className="font-mono text-xs text-muted-foreground" style={{ letterSpacing: "0.1em" }}>PROCESSING…</span>
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Generating...</span>
+                </div>
+                <div className="flex gap-1 mt-2">
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
             </motion.div>
@@ -3147,8 +3093,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <Button
             size="sm"
             variant="outline"
-            className="rounded-sm h-7 w-7 p-0 shadow-lg"
-            style={{ background: "rgba(0,0,0,.7)", border: "1px solid rgba(249,99,2,.5)", color: "#ff8c1a" }}
+            className="rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg"
             onClick={scrollToBottom}
             data-testid="button-scroll-to-bottom"
           >
@@ -3157,7 +3102,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`${compact ? "p-2.5" : "p-3"} border-t border-white/10 space-y-2`} style={{ flexShrink: 0, background: "rgba(0,0,0,.35)" }}>
+      <div className={`${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3168,50 +3113,50 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
         )}
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center w-fit rounded-sm border border-white/10 overflow-hidden" style={{ background: "rgba(0,0,0,.4)" }}>
+          <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit ace-glow-border">
             <button
               onClick={() => setEditorMode("keystone")}
-              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
-                editorMode === "keystone" ? "" : "text-muted-foreground hover:text-foreground"
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                editorMode === "keystone"
+                  ? "bg-gradient-to-r from-cyan-500/15 via-violet-500/15 to-pink-500/15 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "keystone" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
               title="Keystone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
-              <Code2 className="w-3 h-3 inline mr-1" />KEYSTONE
+              <Code2 className="w-3 h-3 inline mr-1" /><span className={editorMode === "keystone" ? "ace-text-shimmer" : ""}>Keystone</span>
             </button>
             <button
               onClick={() => setEditorMode("focus")}
-              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
-                editorMode === "focus" ? "" : "text-muted-foreground hover:text-foreground"
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                editorMode === "focus"
+                  ? "bg-purple-500/20 text-purple-400 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "focus" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
-              <FileText className="w-3 h-3 inline mr-1" />FOCUS
+              <FileText className="w-3 h-3 inline mr-1" />Focus
             </button>
           </div>
           {editorMode === "keystone" && (
             <button
               onClick={() => setReadOnlyMode(!readOnlyMode)}
-              className="flex items-center gap-1.5 px-2.5 py-1 font-mono font-semibold rounded-sm transition-all duration-200 border"
-              style={{
-                fontSize: 10, letterSpacing: "0.1em",
-                ...(readOnlyMode
-                  ? { background: "rgba(251,191,36,.08)", borderColor: "rgba(251,191,36,.4)", color: "#fbbf24" }
-                  : { background: "rgba(52,211,153,.08)", borderColor: "rgba(52,211,153,.35)", color: "#34d399" }),
-              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 border ${
+                readOnlyMode
+                  ? "bg-amber-900/40 border-amber-500/40 text-amber-300"
+                  : "bg-emerald-900/30 border-emerald-500/30 text-emerald-300"
+              }`}
               title={readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files"}
               data-testid="button-toggle-read-write"
             >
               {readOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              <span>{readOnlyMode ? "READ-ONLY" : "READ & WRITE"}</span>
+              <span>{readOnlyMode ? "Read-Only" : "Read & Write"}</span>
             </button>
           )}
         </div>
         <div className="flex gap-2 items-center text-xs">
-          <Sparkles className="w-3 h-3" style={{ color: "#ff8c1a" }} />
+          <Sparkles className="w-3 h-3 text-muted-foreground" />
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
               <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
@@ -3268,9 +3213,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 sendMessage();
               }
             }}
-            placeholder={hasPendingReview ? "> review pending changes first" : editorMode === "focus" ? "> ask about docs, specs, architecture" : readOnlyMode ? "> ask about code, architecture, how to run" : "> ask, build, fix\u2026"}
-            className={`resize-none font-mono text-foreground min-h-[40px] max-h-24 text-sm rounded-sm ${hasPendingReview ? "opacity-50" : ""}`}
-            style={{ background: "rgba(0,0,0,.4)", borderColor: "rgba(255,255,255,.12)" }}
+            placeholder={hasPendingReview ? "Review pending changes first..." : editorMode === "focus" ? "Ask about docs, specs, architecture..." : readOnlyMode ? "Ask about code, architecture, how to run..." : "Ask the AI for help..."}
+            className={`resize-none bg-muted border-border text-foreground min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`}
             rows={1}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
@@ -3278,7 +3222,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {isSendingMessage ? (
             <Button
               onClick={stopStream}
-              className="bg-red-600 hover:bg-red-700 h-auto px-3 rounded-sm"
+              className="bg-red-600 hover:bg-red-700 h-auto px-3"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
@@ -3288,8 +3232,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             <Button
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className="h-auto px-3 rounded-sm text-white"
-              style={{ background: hasPendingReview ? "rgba(249,99,2,.4)" : "#f96302" }}
+              className="bg-indigo-600 hover:bg-indigo-700 h-auto px-3"
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
@@ -3616,139 +3559,121 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     );
   }
 
-  // ─── v2 DESKTOP RAIL ICON helper ────────────────────────────────────────────
-  const RailBtn = ({ icon: Icon, label, active, onClick, testId }: { icon: any; label: string; active?: boolean; onClick: () => void; testId?: string }) => (
-    <button
-      onClick={onClick}
-      title={label}
-      data-testid={testId}
-      style={{
-        width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0, cursor: "pointer", border: "none", background: "transparent", position: "relative",
-        color: active ? "#ff8c1a" : "rgba(255,255,255,.35)",
-        transition: "color .15s",
-      }}
-    >
-      {active && <span style={{ position: "absolute", left: 0, top: "20%", bottom: "20%", width: 2, background: "#f96302", borderRadius: "0 2px 2px 0" }} />}
-      <Icon size={15} />
-    </button>
-  );
-
   return (
-    <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", minHeight: 0, background: "#0b0c10", overflow: "hidden" }}>
+    <div className="h-full w-full bg-background flex flex-col min-h-0">
+      <header className="glass-header flex-shrink-0 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
+        <div className="flex items-center justify-between px-4 py-2 relative z-10">
+          <div className="flex items-center gap-3">
+            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted/50 rounded" data-testid="link-back-portal">
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+            <div className="flex items-center gap-2">
+              <img src={aiasLogo} alt="AiAS" className="w-6 h-6" />
+              <h1 className="text-lg font-semibold ace-text-shimmer" data-testid="text-env-name">{environment.name}</h1>
+            </div>
+          </div>
 
-      {/* ── TITLE BAR (36px) ───────────────────────────────────────────────── */}
-      <div
-        style={{ height: 36, flexShrink: 0, display: "flex", alignItems: "center", paddingLeft: 8, paddingRight: 10, gap: 8,
-          background: "rgba(0,0,0,.7)", borderBottom: "1px solid rgba(249,99,2,.22)" }}
-      >
-        <Link href="/keystone" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 4, color: "rgba(255,255,255,.5)", flexShrink: 0 }} data-testid="link-back-portal">
-          <ChevronLeft size={16} />
-        </Link>
-        <span style={{ width: 2, height: 18, background: "#f96302", borderRadius: 1, flexShrink: 0 }} />
-        <img src={aiasLogo} alt="AiAS" style={{ width: 16, height: 16, flexShrink: 0 }} />
-        <span className="font-mono" style={{ fontSize: 12, fontWeight: 700, color: "#f0f0f0", letterSpacing: ".04em", whiteSpace: "nowrap" }} data-testid="text-env-name">{environment.name}</span>
-        <div style={{ flex: 1 }} />
-
-        {/* Status cluster */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "monospace", fontSize: 9, letterSpacing: ".1em" }}>
-          {runtimeSessionId ? (
-            <span style={{ color: "#22c55e", display: "flex", alignItems: "center", gap: 4 }} data-testid="badge-runtime-session">
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
-              RT:{runtimeSessionId.slice(0, 6)}
-            </span>
-          ) : runtimeLoading ? (
-            <span style={{ color: "#fbbf24", display: "flex", alignItems: "center", gap: 4 }}>
-              <Loader2 size={9} className="animate-spin" />INIT
-            </span>
-          ) : (
-            <button onClick={initRuntimeSession} data-testid="button-init-runtime"
-              style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: ".1em", color: "#ff8c1a", border: "1px solid rgba(249,99,2,.4)", borderRadius: 3, padding: "1px 6px", background: "rgba(249,99,2,.07)", cursor: "pointer" }}>
-              {runtimeError ? "RETRY RT" : "INIT RT"}
-            </button>
-          )}
-          {environment.llm_provider && (
-            <span style={{ color: "rgba(255,255,255,.35)" }} data-testid="badge-provider">{environment.llm_provider.toUpperCase()}</span>
-          )}
+          <div className="flex items-center gap-2">
+            {runtimeSessionId && (
+              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded flex items-center gap-1.5" data-testid="badge-runtime-session">
+                <Zap className="w-3 h-3 text-emerald-400" />
+                Runtime: {runtimeSessionId.slice(0, 8)}
+              </span>
+            )}
+            {runtimeLoading && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />Connecting...
+              </span>
+            )}
+            {!runtimeSessionId && !runtimeLoading && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2 gap-1"
+                onClick={initRuntimeSession}
+                data-testid="button-init-runtime"
+              >
+                <Zap className="w-3 h-3" />
+                {runtimeError ? "Retry Runtime" : "Init Runtime"}
+              </Button>
+            )}
+            {environment.llm_provider && (
+              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded" data-testid="badge-provider">
+                {environment.llm_provider}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              title="Download all files as ZIP"
+              onClick={() => window.open(`/api/keystone/environments/${envId}/files/download-all`, "_blank")}
+              data-testid="button-download-all"
+            >
+              <FolderArchive className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className={`text-muted-foreground ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
+      </header>
 
-        {/* Action icons */}
-        <button onClick={() => window.open(`/api/keystone/environments/${envId}/files/download-all`, "_blank")} title="Download all files as ZIP" data-testid="button-download-all"
-          style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4, color: "rgba(255,255,255,.4)", background: "transparent", border: "none", cursor: "pointer" }}>
-          <FolderArchive size={14} />
-        </button>
-      </div>
-
-      {/* ── WORKSPACE ─────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
-
-        {/* Left icon rail (36px) */}
-        <div style={{ width: 36, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4, paddingBottom: 4, gap: 2,
-          background: "rgba(0,0,0,.5)", borderRight: "1px solid rgba(255,255,255,.05)" }}>
-          <RailBtn icon={Folder} label="Explorer" active={leftRailTab === "files"} onClick={() => setLeftRailTab("files")} testId="rail-files" />
-          <RailBtn icon={Search} label="Search in files" active={leftRailTab === "files" && showFileSearch} onClick={() => { setLeftRailTab("files"); setShowFileSearch(!showFileSearch); }} testId="rail-search" />
-          <div style={{ flex: 1 }} />
-          <RailBtn icon={Package} label="Artifacts" active={leftRailTab === "artifacts"} onClick={() => setLeftRailTab("artifacts")} testId="rail-artifacts" />
-          <RailBtn icon={Settings} label="Settings" active={leftRailTab === "settings"} onClick={() => setLeftRailTab("settings")} testId="rail-settings" />
-        </div>
-
-        {/* Resizable 3-column body */}
-        <ResizablePanelGroup direction="horizontal" style={{ flex: 1, minWidth: 0 }}>
-
-          {/* ── LEFT PANEL ── */}
-          <ResizablePanel defaultSize={18} minSize={12} maxSize={35}>
-            <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "rgba(0,0,0,.28)", borderRight: "1px solid rgba(255,255,255,.05)" }}>
-
-              {/* Panel header */}
-              <div style={{ height: 28, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px",
-                background: "rgba(0,0,0,.3)", borderBottom: "1px solid rgba(255,255,255,.05)" }}>
-                <span className="font-mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".14em", color: "rgba(249,99,2,.85)" }}>
-                  {leftRailTab === "files" ? "EXPLORER" : leftRailTab === "artifacts" ? "ARTIFACTS" : "SETTINGS"}
-                </span>
-                {leftRailTab === "files" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
-                      <DialogTrigger asChild>
-                        <button title="Clone GitHub repository" data-testid="button-clone-github"
-                          style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, color: "rgba(255,255,255,.4)", background: "transparent", border: "none", cursor: "pointer" }}>
-                          <Github size={12} />
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-background border-border">
-                        <DialogHeader>
-                          <DialogTitle>Clone GitHub Repository</DialogTitle>
-                          <DialogDescription className="text-muted-foreground">Clone a public GitHub repository into this environment.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-4">
-                          <div className="space-y-2">
-                            <Label>Repository URL</Label>
-                            <Input placeholder="https://github.com/owner/repo" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} className="bg-muted border-border" data-testid="input-github-url" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Branch</Label>
-                            <Input placeholder="main" value={githubBranch} onChange={(e) => setGithubBranch(e.target.value)} className="bg-muted border-border" data-testid="input-github-branch" />
-                          </div>
-                          <div className="text-xs text-muted-foreground">Only public repositories are supported. Max size: 50MB.</div>
-                          <Button onClick={cloneGithubRepo} disabled={!githubUrl.trim() || isCloningRepo} className="w-full" data-testid="button-clone-submit">
-                            {isCloningRepo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cloning...</> : <><Github className="w-4 h-4 mr-2" />Clone Repository</>}
-                          </Button>
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal">
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+            <div className="h-full flex flex-col bg-background/50 border-r border-border">
+              <div className="p-3 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">Files</span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setShowFileSearch(!showFileSearch)} title="Search in files" data-testid="button-toggle-search">
+                    <Search className="w-3.5 h-3.5" />
+                  </Button>
+                  <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Clone GitHub repository" data-testid="button-clone-github">
+                        <Github className="w-3.5 h-3.5" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-background border-border">
+                      <DialogHeader>
+                        <DialogTitle>Clone GitHub Repository</DialogTitle>
+                        <DialogDescription className="text-muted-foreground">Clone a public GitHub repository into this environment.</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                          <Label>Repository URL</Label>
+                          <Input placeholder="https://github.com/owner/repo" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} className="bg-muted border-border" data-testid="input-github-url" />
                         </div>
-                      </DialogContent>
-                    </Dialog>
-                    <button onClick={loadFileTree} title="Refresh files" data-testid="button-refresh-files"
-                      style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, color: "rgba(255,255,255,.4)", background: "transparent", border: "none", cursor: "pointer" }}>
-                      <RefreshCw size={11} />
-                    </button>
-                  </div>
-                )}
+                        <div className="space-y-2">
+                          <Label>Branch</Label>
+                          <Input placeholder="main" value={githubBranch} onChange={(e) => setGithubBranch(e.target.value)} className="bg-muted border-border" data-testid="input-github-branch" />
+                        </div>
+                        <div className="text-xs text-muted-foreground">Only public repositories are supported. Max size: 50MB.</div>
+                        <Button onClick={cloneGithubRepo} disabled={!githubUrl.trim() || isCloningRepo} className="w-full" data-testid="button-clone-submit">
+                          {isCloningRepo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cloning...</> : <><Github className="w-4 h-4 mr-2" />Clone Repository</>}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadFileTree} data-testid="button-refresh-files">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
 
-              {/* File search bar */}
-              {leftRailTab === "files" && showFileSearch && (
-                <div style={{ flexShrink: 0, padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,.05)" }}>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <Input value={fileSearchQuery} onChange={(e) => setFileSearchQuery(e.target.value)} placeholder="Search pattern…"
-                      className="flex-1 h-7 text-xs bg-muted border-border font-mono" onKeyDown={(e) => e.key === "Enter" && searchInFiles()} data-testid="input-file-search" />
+              {showFileSearch && (
+                <div className="p-2 border-b border-border">
+                  <div className="flex gap-1">
+                    <Input
+                      value={fileSearchQuery}
+                      onChange={(e) => setFileSearchQuery(e.target.value)}
+                      placeholder="Search pattern..."
+                      className="flex-1 h-7 text-xs bg-muted border-border"
+                      onKeyDown={(e) => e.key === "Enter" && searchInFiles()}
+                      data-testid="input-file-search"
+                    />
                     <Button size="sm" variant="outline" onClick={searchInFiles} disabled={fileSearching || !runtimeSessionId} className="h-7 px-2" data-testid="button-file-search">
                       {fileSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                     </Button>
@@ -3757,7 +3682,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     <ScrollArea className="mt-2 max-h-48">
                       <div className="space-y-0.5">
                         {fileSearchResults.map((hit, i) => (
-                          <button key={i} onClick={() => loadFile(hit.file)} className="w-full text-left px-2 py-1 text-xs hover:bg-muted/50 rounded" data-testid={`search-hit-${i}`}>
+                          <button
+                            key={i}
+                            onClick={() => loadFile(hit.file)}
+                            className="w-full text-left px-2 py-1 text-xs hover:bg-muted/50 rounded"
+                            data-testid={`search-hit-${i}`}
+                          >
                             <span className="text-indigo-400 font-mono text-[10px]">{hit.file}</span>
                             <span className="text-muted-foreground text-[10px]">:{hit.line}</span>
                             <div className="text-muted-foreground truncate text-[10px]">{hit.content}</div>
@@ -3769,96 +3699,44 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 </div>
               )}
 
-              {/* Panel body */}
-              {leftRailTab === "files" && (
-                <ScrollArea className="flex-1">
-                  <div className="p-2">
-                    {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
-                      <div className="text-center py-8 text-muted-foreground text-xs font-mono">NO FILES YET</div>
-                    )}
-                  </div>
-                </ScrollArea>
-              )}
-
-              {leftRailTab === "artifacts" && (
-                <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px" }}>
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-                    <button onClick={loadKsArtifacts} style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, color: "rgba(255,255,255,.4)", background: "transparent", border: "none", cursor: "pointer" }}>
-                      <RefreshCw size={11} />
-                    </button>
-                  </div>
-                  {ksArtifactsLoading ? (
-                    <div style={{ display: "flex", justifyContent: "center", padding: 24 }}><Loader2 size={16} className="animate-spin text-violet-400" /></div>
-                  ) : ksArtifacts.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "24px 8px", color: "rgba(255,255,255,.3)", fontSize: 11, fontFamily: "monospace" }}>
-                      <Package size={20} style={{ margin: "0 auto 8px" }} />NO ARTIFACTS
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {ksArtifacts.map(artifact => (
-                        <div key={artifact.id} style={{ border: "1px solid rgba(255,255,255,.07)", borderRadius: 4, padding: "6px 8px", background: "rgba(255,255,255,.02)" }}>
-                          <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 4 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              {renamingKsArtifactId === artifact.id ? (
-                                <input type="text" value={renameKsArtifactValue}
-                                  onChange={(e) => setRenameKsArtifactValue(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") submitKsArtifactRename(); if (e.key === "Escape") setRenamingKsArtifactId(null); }}
-                                  onBlur={submitKsArtifactRename} autoFocus
-                                  style={{ width: "100%", background: "rgba(139,92,246,.1)", border: "1px solid rgba(139,92,246,.4)", borderRadius: 3, padding: "2px 6px", fontSize: 11, color: "#f0f0f0" }}
-                                  data-testid={`input-rename-ks-artifact-${artifact.id}`} />
-                              ) : (
-                                <p style={{ fontSize: 11, color: "#e0e0e0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}
-                                  onClick={() => startKsArtifactRename(artifact.id, artifact.name)} data-testid={`text-ks-artifact-${artifact.id}`}>{artifact.name}</p>
-                              )}
-                              <p style={{ fontSize: 9, color: "rgba(255,255,255,.3)", fontFamily: "monospace", marginTop: 2 }}>{artifact.target_stack || "text"}</p>
-                            </div>
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
-                              onClick={() => importArtifactToEnv(artifact)} disabled={ksImporting === artifact.id} data-testid={`button-import-artifact-${artifact.id}`}>
-                              {ksImporting === artifact.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Download className="w-3 h-3 mr-1" />Use</>}
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2">
+                  {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">No files yet</div>
                   )}
                 </div>
-              )}
+              </ScrollArea>
 
-              {leftRailTab === "settings" && (
-                <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                  {renderSettingsContent()}
-                </div>
-              )}
-
-              {/* Gex debug button — only in files view */}
-              {leftRailTab === "files" && (
-                <div style={{ padding: 8, flexShrink: 0, borderTop: "1px solid rgba(255,255,255,.05)" }}>
-                  <button onClick={() => runGex(selectedFile || undefined)} disabled={gexRunning || isSendingMessage || hasPendingReview}
-                    data-testid="button-gex-debug"
-                    style={{
-                      width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      padding: "6px 10px", borderRadius: 4, fontSize: 11, fontFamily: "monospace", fontWeight: 700, letterSpacing: ".08em",
-                      cursor: gexRunning || isSendingMessage || hasPendingReview ? "not-allowed" : "pointer", border: "none",
-                      background: gexRunning ? "rgba(239,68,68,.15)" : hasPendingReview ? "rgba(239,68,68,.06)" : "rgba(239,68,68,.85)",
-                      color: gexRunning || hasPendingReview ? "rgba(239,68,68,.6)" : "#fff",
-                      opacity: hasPendingReview ? 0.5 : 1,
-                    }}>
-                    {gexRunning ? <><Loader2 size={12} className="animate-spin" />SCANNING…</> : <><ScanSearch size={12} />DEBUG _GEX</>}
-                  </button>
-                  {selectedFile && !gexRunning && (
-                    <div style={{ fontSize: 9, fontFamily: "monospace", color: "rgba(255,255,255,.25)", textAlign: "center", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {selectedFile}
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="p-2 border-t border-border">
+                <button
+                  onClick={() => runGex(selectedFile || undefined)}
+                  disabled={gexRunning || isSendingMessage || hasPendingReview}
+                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    gexRunning
+                      ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
+                      : hasPendingReview
+                      ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 hover:shadow-red-800/40 active:scale-[0.97]"
+                  }`}
+                  data-testid="button-gex-debug"
+                >
+                  {gexRunning
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Scanning...</>
+                    : <><ScanSearch className="w-4 h-4" />Debug w/ _Gex</>
+                  }
+                </button>
+                {selectedFile && !gexRunning && (
+                  <div className="text-[10px] text-muted-foreground text-center mt-1 truncate">
+                    Target: {selectedFile}
+                  </div>
+                )}
+              </div>
             </div>
           </ResizablePanel>
 
           <ResizableHandle />
 
-          {/* ── EDITOR PANEL ── */}
-          <ResizablePanel defaultSize={47}>
+          <ResizablePanel defaultSize={45}>
             <div className="h-full flex flex-col bg-background">
               {openTabs.length > 0 ? (
                 <>
@@ -4077,49 +3955,125 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
           <ResizableHandle />
 
-          {/* ── RIGHT PANEL: Chat always on top + bottom strip ── */}
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", background: "#0b0c10" }}>
-
-              {/* Chat — always visible, takes all available space */}
-              <div style={{ flex: "1 1 0%", minHeight: 0, position: "relative", overflow: "hidden" }}>
-                {renderChatPanel()}
-              </div>
-
-              {/* Bottom panel strip — enterprise only */}
-              {isEnterprise && (
-                <>
-                  {/* Strip tab bar */}
-                  <div style={{ flexShrink: 0, height: 28, display: "flex", alignItems: "center", paddingLeft: 8, paddingRight: 8, gap: 2,
-                    background: "rgba(0,0,0,.55)", borderTop: "1px solid rgba(249,99,2,.18)" }}>
-                    <span className="font-mono" style={{ fontSize: 9, color: "rgba(255,255,255,.25)", letterSpacing: ".12em", marginRight: 6, flexShrink: 0 }}>PANEL</span>
-                    {([ ["terminal", Terminal, "#34d399"], ["deploy", Rocket, "#60a5fa"], ["ledger", ScrollText, "#fbbf24"] ] as const).map(([tab, Icon, color]) => {
-                      const isActive = activeTab === tab;
-                      return (
-                        <button key={tab} onClick={() => setActiveTab(isActive ? "chat" : tab)} data-testid={`tab-${tab}`}
-                          style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 3, border: "none", cursor: "pointer", transition: "all .15s",
-                            fontFamily: "monospace", fontSize: 9, letterSpacing: ".1em", fontWeight: 700,
-                            background: isActive ? `${color}18` : "transparent",
-                            color: isActive ? color : "rgba(255,255,255,.3)",
-                            boxShadow: isActive ? `inset 0 -2px 0 ${color}` : "none",
-                          }}>
-                          <Icon size={10} />
-                          {(tab as string).toUpperCase()}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Bottom panel body — shown when a strip tab is active */}
-                  {(activeTab === "terminal" || activeTab === "deploy" || activeTab === "ledger") && (
-                    <div style={{ flexShrink: 0, height: 240, overflow: "hidden", borderTop: "1px solid rgba(255,255,255,.05)", background: "rgba(0,0,0,.35)" }}>
-                      {activeTab === "terminal" && renderTerminalTab()}
-                      {activeTab === "deploy" && renderDeployTab()}
-                      {activeTab === "ledger" && renderLedgerTab()}
-                    </div>
+            <div className="h-full min-h-0 flex flex-col bg-background/50 min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
+                <TabsList className="border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
+                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
+                  </TabsTrigger>
+                  {isEnterprise && (
+                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
+                      <Terminal className="w-3.5 h-3.5 mr-1" />Terminal
+                    </TabsTrigger>
                   )}
-                </>
-              )}
+                  {isEnterprise && (
+                    <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-deploy">
+                      <Rocket className="w-3.5 h-3.5 mr-1" />Manage
+                    </TabsTrigger>
+                  )}
+                  {isEnterprise && (
+                    <TabsTrigger value="ledger" className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-ledger">
+                      <ScrollText className="w-3.5 h-3.5 mr-1" />Ledger
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="artifacts" className="rounded-none border-b-2 border-transparent data-[state=active]:border-violet-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-artifacts">
+                    <Package className="w-3.5 h-3.5 mr-1" />Artifacts
+                    {ksArtifacts.length > 0 && <span className="ml-1 bg-violet-500/20 text-violet-300 text-[10px] px-1.5 rounded-full">{ksArtifacts.length}</span>}
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-settings">
+                    <Settings className="w-3.5 h-3.5 mr-1" />Settings
+                  </TabsTrigger>
+                </TabsList>
+
+                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative">
+                    {renderChatPanel()}
+                  </TabsContent>
+
+                  {isEnterprise && (
+                    <TabsContent value="terminal" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderTerminalTab()}
+                    </TabsContent>
+                  )}
+
+                  {isEnterprise && (
+                    <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderDeployTab()}
+                    </TabsContent>
+                  )}
+
+                  {isEnterprise && (
+                    <TabsContent value="ledger" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderLedgerTab()}
+                    </TabsContent>
+                  )}
+
+                  <TabsContent value="artifacts" className="flex-1 flex flex-col m-0 overflow-hidden">
+                    <div className="p-4 space-y-3 overflow-y-auto flex-1" data-testid="panel-artifacts-ks">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-foreground">Saved Artifacts</h3>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadKsArtifacts} title="Refresh">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      {ksArtifactsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
+                        </div>
+                      ) : ksArtifacts.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          <Package className="w-7 h-7 mx-auto mb-2 opacity-50" />
+                          <p>No artifacts yet</p>
+                          <p className="text-xs mt-1 opacity-60">Save code from Playground to see them here</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {ksArtifacts.map((artifact) => (
+                            <div key={artifact.id} className="bg-muted/30 border border-border rounded-lg p-3 group hover:border-violet-500/30 transition-colors">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  {renamingKsArtifactId === artifact.id ? (
+                                    <input
+                                      type="text"
+                                      value={renameKsArtifactValue}
+                                      onChange={(e) => setRenameKsArtifactValue(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") submitKsArtifactRename(); if (e.key === "Escape") setRenamingKsArtifactId(null); }}
+                                      onBlur={submitKsArtifactRename}
+                                      autoFocus
+                                      className="w-full bg-muted border border-violet-500/40 rounded px-1.5 py-0.5 text-sm text-foreground focus:outline-none focus:border-violet-400 min-w-0"
+                                      data-testid={`input-rename-ks-artifact-${artifact.id}`}
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-foreground truncate cursor-text hover:text-violet-300 transition-colors" onClick={() => startKsArtifactRename(artifact.id, artifact.name)} data-testid={`text-ks-artifact-${artifact.id}`}>{artifact.name}</p>
+                                  )}
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">{artifact.target_stack || "text"}</p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                                  onClick={() => importArtifactToEnv(artifact)}
+                                  disabled={ksImporting === artifact.id}
+                                  data-testid={`button-import-artifact-${artifact.id}`}
+                                >
+                                  {ksImporting === artifact.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <><Download className="w-3 h-3 mr-1" />Import</>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="settings" className="flex-1 flex flex-col m-0 overflow-hidden">
+                    {renderSettingsContent()}
+                  </TabsContent>
+              </Tabs>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>

@@ -402,12 +402,16 @@ class DevNetwork {
   private showLogin2FA(hash: string): void {
     this.container.innerHTML = `
       <div class="max-w-md mx-auto px-3 sm:px-4 py-6 sm:py-12" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-        <div class="card slide-up">
+        <div class="card slide-up holo-outline">
           <div class="text-center mb-4 sm:mb-6">
-            <div class="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 mb-3 shadow-lg shadow-emerald-500/25">
-              <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-              </svg>
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height:48px;object-fit:contain;margin:0 auto 10px;display:block;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+            <div class="mb-1" style="letter-spacing:-0.02em;">
+              <span class="text-xl sm:text-2xl font-bold text-white">Ai</span><span class="text-xl sm:text-2xl ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+            </div>
+            <div class="flex items-center justify-center gap-2 mb-3">
+              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+              <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
             </div>
             <h2 class="text-xl sm:text-2xl font-bold gradient-text">Welcome Back</h2>
             <p class="text-zinc-400 mt-1 text-sm">Enter your 2FA code to continue</p>
@@ -543,13 +547,20 @@ class DevNetwork {
         <div class="absolute inset-0 bg-zinc-950/80" style="z-index:1;"></div>
 
         <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
-          <div class="slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/70 border border-zinc-700/50 rounded-xl p-5 sm:p-7">
+          <div class="slide-up relative overflow-hidden backdrop-blur-md rounded-xl p-5 sm:p-7 holo-outline">
             <div class="text-center mb-5">
               <div class="relative inline-flex items-center justify-center mb-3">
-                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
-                <img src="/static/logo-icon-dark.png" alt="AiAS" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(16,185,129,0.35));">
+                <div class="absolute bg-cyan-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
+                <img src="/static/favicon.png" alt="AiAssist Secure" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
               </div>
-              <h1 class="text-2xl sm:text-3xl font-bold mb-1"><span class="gradient-text glow-text">AiAS</span></h1>
+              <h1 class="text-2xl sm:text-3xl mb-1" style="letter-spacing:-0.02em;">
+                <span class="font-bold text-white">Ai</span><span class="ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+              </h1>
+              <div class="flex items-center justify-center gap-2 mb-2">
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+                <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+              </div>
               <p class="text-zinc-400 text-sm">Your team — human and AI — in one space.</p>
             </div>
 
@@ -708,15 +719,20 @@ class DevNetwork {
         <canvas id="wizard-glitter-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;"></canvas>
         
         <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
-          <div class="text-center slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/60 border border-zinc-700/50 rounded-xl p-4 sm:p-6">
+          <div class="text-center slide-up relative overflow-hidden backdrop-blur-md rounded-xl p-4 sm:p-6 holo-outline">
             <div class="mb-4 sm:mb-5">
               <div class="relative inline-flex items-center justify-center mb-3">
-                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-30 animate-pulse" style="width:80px;height:80px;"></div>
-                <img src="/static/logo-icon-dark.png" alt="DevNetwork" class="relative animate-float" style="height:64px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(16,185,129,0.4));">
+                <div class="absolute bg-cyan-500 rounded-2xl blur-xl opacity-30 animate-pulse" style="width:80px;height:80px;"></div>
+                <img src="/static/favicon.png" alt="AiAssist Secure" class="relative animate-float" style="height:64px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
               </div>
-              <h1 class="text-2xl sm:text-3xl font-bold mb-1">
-                <span class="gradient-text glow-text">DevNetwork</span>
+              <h1 class="text-2xl sm:text-3xl mb-1" style="letter-spacing:-0.02em;">
+                <span class="font-bold text-white">Ai</span><span class="ace-text-shimmer-load" style="font-weight:300;">Assist</span>
               </h1>
+              <div class="flex items-center justify-center gap-2 mb-2">
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+                <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+              </div>
               <p class="text-zinc-300 text-sm sm:text-base">Where builders connect. No paywalls. No gatekeeping.</p>
             </div>
 
@@ -806,14 +822,26 @@ class DevNetwork {
   private showLinkDevice(): void {
     this.container.innerHTML = `
       <div class="max-w-lg mx-auto px-4 py-8">
-        <div class="card-elevated slide-up">
+        <div class="card-elevated slide-up holo-outline">
           <button id="back-to-intro" class="text-zinc-400 hover:text-emerald-400 mb-4 flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
             Back
           </button>
-          
+
+          <div class="text-center mb-4">
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height:40px;object-fit:contain;margin:0 auto 8px;display:block;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+            <div style="letter-spacing:-0.02em;">
+              <span class="text-lg font-bold text-white">Ai</span><span class="text-lg ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+            </div>
+            <div class="flex items-center justify-center gap-2 mt-1">
+              <span style="height:1px;width:32px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
+              <span class="ace-text-shimmer-load text-[9px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
+              <span style="height:1px;width:32px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+            </div>
+          </div>
+
           <h2 class="text-xl font-bold text-zinc-100 mb-2">Link This Device</h2>
           <p class="text-zinc-400 mb-6">Enter your login hash and 2FA code to link this device to your account.</p>
           
@@ -1302,7 +1330,7 @@ class DevNetwork {
             <div><label class="block text-sm font-medium text-warm-gray-700 mb-1">Email Address <span class="text-zinc-500">(optional)</span></label><input type="email" name="email" class="input" placeholder="your@email.com" /></div>
             <div><label class="block text-sm font-medium text-warm-gray-700 mb-1">LinkedIn or Portfolio <span class="text-emerald-400">*</span></label><input type="url" name="portfolio" class="input" placeholder="https://linkedin.com/in/you or https://yoursite.com" required /><p class="text-xs text-zinc-500 mt-1">Must start with https://</p></div>
             <button type="submit" class="btn btn-primary w-full py-2.5 sm:py-3 text-base sm:text-lg">
-              Join DevNetwork
+              Join AiAssist Secure
             </button>
           </form>
         </div>
@@ -1396,7 +1424,7 @@ class DevNetwork {
   }
 
   private show2FASetup(user: User, hash: string, totpSecret: string): void {
-    const otpauthUrl = `otpauth://totp/DevNetwork:${encodeURIComponent(user.displayName)}?secret=${totpSecret}&issuer=DevNetwork`;
+    const otpauthUrl = `otpauth://totp/${encodeURIComponent("AiAssist Secure")}:${encodeURIComponent(user.displayName)}?secret=${totpSecret}&issuer=${encodeURIComponent("AiAssist Secure")}`;
     
     this.container.innerHTML = `
       <div class="max-w-lg mx-auto px-3 sm:px-4 py-3 sm:py-6" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
@@ -1475,7 +1503,7 @@ class DevNetwork {
                   </svg>
                 </button>
               </div>
-              <p class="text-[10px] sm:text-xs text-zinc-500 mt-1">Account: DevNetwork (${user.displayName})</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 mt-1">Account: AiAssist Secure (${user.displayName})</p>
             </div>
             
             <div class="bg-zinc-800/50 rounded-xl p-3 sm:p-4 border border-zinc-700/50">
@@ -1607,7 +1635,7 @@ class DevNetwork {
           </div>
           
           <button id="enter-app-btn" class="btn btn-primary w-full py-3 text-lg">
-            Enter DevNetwork
+            Enter AiAssist Secure
           </button>
         </div>
       </div>
@@ -1635,7 +1663,7 @@ class DevNetwork {
       <div class="max-w-2xl mx-auto px-4 py-8">
         <div class="card text-center slide-up">
           <div class="mb-6">
-            <img src="/static/logo-icon-dark.png" alt="DevNetwork" style="height: 64px; object-fit: contain; margin: 0 auto 16px; display: block; filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.4));" class="pulse-glow">
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height: 64px; object-fit: contain; margin: 0 auto 16px; display: block; filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5)) drop-shadow(0 0 6px rgba(139, 92, 246, 0.3));" class="pulse-glow">
             <h2 class="text-3xl font-bold mb-2">
               <span class="shimmer-text">Network Activated</span>
             </h2>
@@ -3693,7 +3721,7 @@ class DevNetwork {
 
     const sections: { id: string; title: string; icon: string; children?: { id: string; title: string }[] }[] = [
       { id: "getting-started", title: "Getting Started", icon: "rocket", children: [
-        { id: "gs-overview", title: "What is DevNetwork?" },
+        { id: "gs-overview", title: "What is AiAssist Secure?" },
         { id: "gs-signup", title: "Creating Your Account" },
         { id: "gs-2fa", title: "Two-Factor Authentication" },
         { id: "gs-wizard", title: "Onboarding Wizard" },
@@ -3765,8 +3793,8 @@ class DevNetwork {
 
     const contentMap: Record<string, string> = {
       "gs-overview": `
-        <h1>What is DevNetwork?</h1>
-        <p>DevNetwork is a professional networking platform built for developers, designers, and builders looking to connect, collaborate, and grow. Think of it as a modern dev hub — real-time conversations and networking without the paywall.</p>
+        <h1>What is AiAssist Secure?</h1>
+        <p>AiAssist Secure is a professional networking platform built for developers, designers, and builders looking to connect, collaborate, and grow. Think of it as a modern dev hub — real-time conversations and networking without the paywall.</p>
         <h3>Core Philosophy</h3>
         <ul>
           <li>Works seamlessly on mobile and desktop</li>
@@ -3789,7 +3817,7 @@ class DevNetwork {
       `,
       "gs-signup": `
         <h1>Creating Your Account</h1>
-        <p>Registration on DevNetwork uses a unique device fingerprint combined with a username and two-factor authentication.</p>
+        <p>Registration on AiAssist Secure uses a unique device fingerprint combined with a username and two-factor authentication.</p>
         <h3>Step-by-Step</h3>
         <ol>
           <li>Visit the platform — your device fingerprint is generated automatically</li>
@@ -3808,7 +3836,7 @@ class DevNetwork {
       `,
       "gs-2fa": `
         <h1>Two-Factor Authentication</h1>
-        <p>DevNetwork requires Google TOTP (Time-based One-Time Password) for all accounts. This is mandatory and cannot be skipped.</p>
+        <p>AiAssist Secure requires Google TOTP (Time-based One-Time Password) for all accounts. This is mandatory and cannot be skipped.</p>
         <h3>Setup Process</h3>
         <ol>
           <li>Install <strong>Google Authenticator</strong> on your phone (iOS or Android)</li>
@@ -3838,7 +3866,7 @@ class DevNetwork {
       `,
       "gs-matchmaking": `
         <h1>Matchmaking & Network Reveal</h1>
-        <p>After completing the wizard, DevNetwork's matchmaking engine automatically connects you to relevant communities.</p>
+        <p>After completing the wizard, AiAssist Secure's matchmaking engine automatically connects you to relevant communities.</p>
         <h3>How Matchmaking Works</h3>
         <ol>
           <li>Your wizard answers are analyzed against 70+ pre-built communities</li>
@@ -3865,7 +3893,7 @@ class DevNetwork {
       `,
       "feed-posting": `
         <h1>Creating Posts</h1>
-        <p>Share updates, thoughts, and content with the entire DevNetwork community.</p>
+        <p>Share updates, thoughts, and content with the entire AiAssist Secure community.</p>
         <h3>How to Post</h3>
         <ol>
           <li>Click the text area at the top of the Feed page</li>
@@ -3883,7 +3911,7 @@ class DevNetwork {
       `,
       "feed-markdown": `
         <h1>Markdown & Formatting</h1>
-        <p>DevNetwork supports full GitHub Flavored Markdown (GFM) across posts, comments, community messages, and direct messages.</p>
+        <p>AiAssist Secure supports full GitHub Flavored Markdown (GFM) across posts, comments, community messages, and direct messages.</p>
         <h3>Supported Syntax</h3>
         <table>
           <thead><tr><th>Format</th><th>Syntax</th><th>Result</th></tr></thead>
@@ -3946,7 +3974,7 @@ class DevNetwork {
       `,
       "comm-overview": `
         <h1>Communities</h1>
-        <p>Communities are real-time messaging rooms organized by topic — similar to Slack channels or Telegram groups. They're the heart of DevNetwork's collaboration features.</p>
+        <p>Communities are real-time messaging rooms organized by topic — similar to Slack channels or Telegram groups. They're the heart of AiAssist Secure's collaboration features.</p>
         <h3>Features</h3>
         <ul>
           <li>Real-time messaging via WebSocket</li>
@@ -4019,7 +4047,7 @@ class DevNetwork {
       `,
       "comm-sharing": `
         <h1>External Sharing</h1>
-        <p>Every community has a shareable URL that can be distributed outside of DevNetwork.</p>
+        <p>Every community has a shareable URL that can be distributed outside of AiAssist Secure.</p>
         <h3>Share Link Format</h3>
         <p><code>https://your-domain/g/{slug}</code></p>
         <h3>What Happens</h3>
@@ -4062,7 +4090,7 @@ class DevNetwork {
       `,
       "notif-overview": `
         <h1>Notifications</h1>
-        <p>DevNetwork's notification system keeps you informed about activity that involves you.</p>
+        <p>AiAssist Secure's notification system keeps you informed about activity that involves you.</p>
         <h3>How It Works</h3>
         <ul>
           <li>Notifications appear in real time via WebSocket</li>
@@ -4090,7 +4118,7 @@ class DevNetwork {
       `,
       "profile-overview": `
         <h1>Your Profile</h1>
-        <p>Your profile showcases your professional identity on DevNetwork — built from your wizard answers and customizable fields.</p>
+        <p>Your profile showcases your professional identity on AiAssist Secure — built from your wizard answers and customizable fields.</p>
         <h3>Profile Fields</h3>
         <ul>
           <li><strong>Display Name</strong> — Your unique username</li>
@@ -4119,7 +4147,7 @@ class DevNetwork {
       `,
       "gep-overview": `
         <h1>What is Geppetto?</h1>
-        <p>Geppetto is DevNetwork's bot orchestration system. It's a system bot that helps you create, manage, and deploy bots through conversational commands in your DMs.</p>
+        <p>Geppetto is AiAssist Secure's bot orchestration system. It's a system bot that helps you create, manage, and deploy bots through conversational commands in your DMs.</p>
         <h3>How It Works</h3>
         <ol>
           <li>Open a DM with <strong>Geppetto</strong> (find it in your messages or the Bots page)</li>
@@ -4187,7 +4215,7 @@ class DevNetwork {
         <h1>Authentication & Tokens</h1>
         <p>Bots authenticate using bearer tokens in the format <code>dvn_bot_*</code>.</p>
         <h3>Token Format</h3>
-        <p>Tokens are prefixed with <code>dvn_bot_</code> followed by a random string. They are SHA-256 hashed before storage — DevNetwork never stores raw tokens.</p>
+        <p>Tokens are prefixed with <code>dvn_bot_</code> followed by a random string. They are SHA-256 hashed before storage — AiAssist Secure never stores raw tokens.</p>
         <h3>Using Your Token</h3>
         <p>Include the token in the <code>Authorization</code> header:</p>
         <pre><code>Authorization: Bearer dvn_bot_abc123xyz...</code></pre>
@@ -4207,7 +4235,7 @@ class DevNetwork {
       `,
       "gep-approval": `
         <h1>Approval System</h1>
-        <p>DevNetwork uses a two-tier approval system for bots:</p>
+        <p>AiAssist Secure uses a two-tier approval system for bots:</p>
         <h3>Tier 1: Global Approval</h3>
         <p>When you create a bot via Geppetto, it is auto-approved globally with the requested capabilities. There's no waiting period for basic bot creation.</p>
         <h3>Tier 2: Community Approval</h3>
@@ -4347,7 +4375,7 @@ class DevNetwork {
       `,
       "sdk-python": `
         <h1>Python SDK</h1>
-        <p>Official Python client for the DevNetwork Bot API.</p>
+        <p>Official Python client for the AiAssist Secure Bot API.</p>
         <h3>Installation</h3>
         <pre><code>pip install devnetwork-bot</code></pre>
         <h3>Quick Start</h3>
@@ -4391,7 +4419,7 @@ asyncio.run(bot.connect_ws(on_message))</code></pre>
       `,
       "sdk-node": `
         <h1>Node.js SDK</h1>
-        <p>Official Node.js/TypeScript client for the DevNetwork Bot API.</p>
+        <p>Official Node.js/TypeScript client for the AiAssist Secure Bot API.</p>
         <h3>Installation</h3>
         <pre><code>npm install devnetwork-bot</code></pre>
         <h3>Quick Start</h3>
@@ -4427,7 +4455,7 @@ await bot.sendGroupMessage('group-uuid', 'Build passed!');</code></pre>
       `,
       "sdk-websocket": `
         <h1>WebSocket Events</h1>
-        <p>DevNetwork supports real-time communication via WebSocket connections.</p>
+        <p>AiAssist Secure supports real-time communication via WebSocket connections.</p>
         <h3>Endpoints</h3>
         <table>
           <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
