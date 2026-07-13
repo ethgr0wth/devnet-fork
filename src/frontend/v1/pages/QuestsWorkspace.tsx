@@ -2158,7 +2158,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       className="flex flex-col h-full qw-panel-body"
       data-testid="tab-content-terminal"
     >
-      <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
+      <div className="qw-panel-head-row" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
         <Terminal className="w-4 h-4" style={{ color: "#12d48a" }} />
         <div className="min-w-0">
           <div className="qw-panel-kicker">Terminal</div>
@@ -2166,7 +2166,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Select value={termLang} onValueChange={(v) => handleLangChange(v as "python" | "node")}>
-            <SelectTrigger className="h-7 w-24 text-xs bg-muted border-border" data-testid="select-terminal-lang">
+            <SelectTrigger className="qw-select h-7 w-24 text-xs" data-testid="select-terminal-lang">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -2174,16 +2174,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               <SelectItem value="node">Node.js</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            size="sm"
+          <button
+            type="button"
             onClick={runCode}
             disabled={termRunning || !runtimeSessionId}
-            className="h-7 bg-emerald-600 hover:bg-emerald-700 text-xs"
+            className="qw-run-btn"
             data-testid="button-run-code"
           >
-            {termRunning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Play className="w-3 h-3 mr-1" />}
+            {termRunning ? <Loader2 className="w-3 h-3" /> : <Play className="w-3 h-3" />}
             Run
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -2208,41 +2208,34 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           />
         </div>
 
-        <div className="flex-[2] border-t border-border bg-black/30 overflow-auto">
+        <div className="flex-[2] qw-term-output border-t" style={{ background: "rgba(0,0,0,.5)" }}>
           {termOutput ? (
-            <div className="p-3 font-mono text-xs space-y-1" data-testid="terminal-output">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-muted-foreground text-[10px]">EXIT CODE:</span>
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                  termOutput.exit_code === 0
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-red-500/20 text-red-400"
-                }`}>
-                  {termOutput.exit_code}
-                </span>
+            <div className="p-3 font-mono text-xs space-y-1.5" data-testid="terminal-output">
+              <div className="qw-term-exit">
+                EXIT CODE
+                <b className={termOutput.exit_code === 0 ? "" : "err"}>{termOutput.exit_code}</b>
               </div>
               {termOutput.stdout && (
-                <pre className="whitespace-pre-wrap text-emerald-300/90 bg-emerald-950/30 rounded p-2 border border-emerald-900/30">{termOutput.stdout}</pre>
+                <pre className="whitespace-pre-wrap text-emerald-300/90">{termOutput.stdout}</pre>
               )}
               {termOutput.stderr && (
-                <pre className="whitespace-pre-wrap text-red-300/90 bg-red-950/30 rounded p-2 border border-red-900/30">{termOutput.stderr}</pre>
+                <pre className="whitespace-pre-wrap text-red-300/90">{termOutput.stderr}</pre>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              <div className="text-center">
-                <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p>Run code to see output</p>
-              </div>
+            <div className="qw-panel-empty h-full">
+              <div className="qw-panel-empty-icon"><Terminal className="w-6 h-6" /></div>
+              <p className="qw-panel-empty-title">No output yet</p>
+              <p className="qw-panel-empty-sub">Run code to see stdout / stderr here.</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="p-3 border-t border-border flex items-center gap-2">
-        <Package className="w-4 h-4 text-muted-foreground" />
+      <div className="qw-pkg-row border-t" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
+        <Package className="w-4 h-4" style={{ color: "#8b8798" }} />
         <Select value={pkgEco} onValueChange={(v) => setPkgEco(v as "python" | "node")}>
-          <SelectTrigger className="h-7 w-20 text-xs bg-muted border-border" data-testid="select-pkg-eco">
+          <SelectTrigger className="qw-select h-7 w-20 text-xs" data-testid="select-pkg-eco">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -2254,20 +2247,19 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           value={pkgName}
           onChange={(e) => setPkgName(e.target.value)}
           placeholder="package name"
-          className="flex-1 h-7 text-xs bg-muted border-border"
+          className="qw-input flex-1 h-7 text-xs"
           onKeyDown={(e) => e.key === "Enter" && installPackage()}
           data-testid="input-pkg-name"
         />
-        <Button
-          size="sm"
-          variant="outline"
+        <button
+          type="button"
           onClick={installPackage}
           disabled={!pkgName.trim() || pkgInstalling || !runtimeSessionId}
-          className="h-7 text-xs"
+          className="qw-pkg-btn"
           data-testid="button-install-pkg"
         >
           {pkgInstalling ? <Loader2 className="w-3 h-3 animate-spin" /> : "Install"}
-        </Button>
+        </button>
       </div>
     </motion.div>
   );
@@ -2759,7 +2751,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     // class is missing from the prebuilt stylesheet or a merge drops one:
     // the desktop tab chain collapsed exactly this way (missing minHeight).
     <div
-      className="absolute inset-0 flex flex-col overflow-hidden"
+      className="qw-chat-root absolute inset-0 flex flex-col overflow-hidden"
       style={{
         position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
         display: "flex", flexDirection: "column", overflow: "hidden",
@@ -2767,16 +2759,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         background: "linear-gradient(180deg, rgba(18,212,138,.04), transparent 140px)",
       }}
     >
-      <div
-        className="flex items-center justify-between"
-        style={{ flexShrink: 0, padding: "8px 12px", background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.07)" }}
-        data-testid="chat-status-bar"
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span style={{ fontSize: 10, color: "#12d48a", letterSpacing: "0.14em", fontWeight: 700 }}>KEYSTONE AGENT</span>
-          <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: runtimeSessionId ? "#12d48a" : "#6b7280", boxShadow: runtimeSessionId ? "0 0 8px #12d48a" : "none" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
+      <div className="qw-chat-status" data-testid="chat-status-bar">
+        <div className="left">
+          <span className="label">KeyStone Agent</span>
+          <span className="dot-s" style={{ background: runtimeSessionId ? "#12d48a" : "#6b7280", boxShadow: runtimeSessionId ? "0 0 8px #12d48a" : "none" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
         </div>
-        <div className="flex items-center gap-3 font-mono text-muted-foreground" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
+        <div className="meta">
           <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
           {editorMode === "keystone" && (
             <span style={{ color: readOnlyMode ? "#f5a524" : "#12d48a" }}>{readOnlyMode ? "READ" : "R/W"}</span>
@@ -2790,7 +2778,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         style={{ flex: "1 1 0%", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}
       >
-        <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
+        <div className={`qw-chat-list ${compact ? "compact" : ""} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
             <div className="py-6 px-4 min-h-[240px] flex items-start justify-center" data-testid="chat-empty-state">
               <div className="qw-chat-empty w-full">
@@ -2829,28 +2817,20 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   key={msg.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex gap-3 w-full min-w-0 max-w-full overflow-hidden"
+                  className="qw-msg w-full min-w-0 max-w-full overflow-hidden"
                   data-testid={`message-${msg.id}`}
                   data-role={msg.role}
                 >
-                  <div
-                    className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0"
-                    style={isUser
-                      ? { background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8 }
-                      : { background: "linear-gradient(135deg, rgba(18,212,138,.25), rgba(245,165,36,.18))", border: "1px solid rgba(18,212,138,.3)", borderRadius: 8 }}
-                  >
-                    {isUser ? <User className="w-3.5 h-3.5" style={{ color: "#8b8798" }} /> : <Bot className="w-3.5 h-3.5" style={{ color: "#12d48a" }} />}
+                  <div className={`qw-avatar ${isUser ? "user" : "ai"} flex-shrink-0`}>
+                    {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                   </div>
                   <div
-                    className="px-3 py-2.5 min-w-0 overflow-hidden break-words text-foreground"
+                    className={`qw-bubble ${isUser ? "user" : ""} min-w-0 overflow-hidden break-words text-foreground`}
                     style={{
                       flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere",
-                      background: isUser ? "rgba(255,255,255,.045)" : "rgba(255,255,255,.03)",
-                      border: "1px solid rgba(255,255,255,.07)",
-                      borderRadius: 12,
                     }}
                   >
-                    <div className="mb-1" style={{ fontSize: 10, letterSpacing: "0.08em", fontWeight: 700, color: isUser ? "#8b8798" : "#5a5668" }}>{isUser ? "You" : "KeyStone"}</div>
+                    <div className="who">{isUser ? "You" : "KeyStone"}</div>
                     {isUser ? (
                       <p className="text-sm break-words" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}>{msg.content}</p>
                     ) : (() => {
@@ -3171,8 +3151,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`${compact ? "p-2.5" : "p-3"} border-t space-y-2`} style={{ flexShrink: 0, background: "rgba(0,0,0,.28)", borderColor: "rgba(255,255,255,.07)" }}>
-        <div className="rounded-[14px] border p-2.5 space-y-2" style={{ background: "#0e0e14", borderColor: "rgba(255,255,255,.12)", boxShadow: "0 0 0 1px rgba(18,212,138,.05), 0 12px 40px rgba(0,0,0,.25)" }}>
+      <div className={`qw-composer ${compact ? "compact" : ""}`} style={{ flexShrink: 0 }}>
+        <div className="qw-composer-box space-y-2">
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3182,14 +3162,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Button>
           </div>
         )}
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center w-fit rounded-[10px] border overflow-hidden" style={{ background: "#0e0e14", borderColor: "rgba(255,255,255,.07)" }}>
+        <div className="qw-mode-row">
+          <div className="qw-seg">
             <button
               onClick={() => setEditorMode("keystone")}
-              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
-                editorMode === "keystone" ? "" : "text-muted-foreground hover:text-foreground"
-              }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "keystone" ? { background: "rgba(18,212,138,.12)", color: "#12d48a", boxShadow: "inset 0 0 0 1px rgba(18,212,138,.25)" } : {}) }}
+              type="button"
+              className={editorMode === "keystone" ? "active" : ""}
               title="KeyStone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
@@ -3197,10 +3175,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </button>
             <button
               onClick={() => setEditorMode("focus")}
-              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
-                editorMode === "focus" ? "" : "text-muted-foreground hover:text-foreground"
-              }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "focus" ? { background: "rgba(245,165,36,.14)", color: "#f5a524", boxShadow: "inset 0 0 0 1px rgba(245,165,36,.3)" } : {}) }}
+              type="button"
+              className={editorMode === "focus" ? "active focus" : ""}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
@@ -3210,13 +3186,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {editorMode === "keystone" && (
             <button
               onClick={() => setReadOnlyMode(!readOnlyMode)}
-              className="flex items-center gap-1.5 px-2.5 py-1 font-mono font-semibold rounded-sm transition-all duration-200 border"
-              style={{
-                fontSize: 10, letterSpacing: "0.1em",
-                ...(readOnlyMode
-                  ? { background: "rgba(251,191,36,.08)", borderColor: "rgba(251,191,36,.4)", color: "#fbbf24" }
-                  : { background: "rgba(52,211,153,.08)", borderColor: "rgba(52,211,153,.35)", color: "#34d399" }),
-              }}
+              type="button"
+              className={`qw-rw-btn ${readOnlyMode ? "ro" : ""}`}
               title={readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files"}
               data-testid="button-toggle-read-write"
             >
@@ -3225,11 +3196,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </button>
           )}
         </div>
-        <div className="flex gap-2 items-center text-xs">
+        <div className="qw-provider-row">
           <Sparkles className="w-3 h-3" style={{ color: "#f5a524" }} />
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-              <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
+              <SelectTrigger className="qw-select h-7 w-24 text-xs" data-testid="select-provider">
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
               <SelectContent>
@@ -3238,12 +3209,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Select>
           )}
           {providers.length <= 1 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="qw-provider-pill">
+              <span className="spark" style={{ color: "#f5a524" }}>◆</span>
               {providers[0]?.name || (detectedProvider ? detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1) : "AI")}
             </span>
           )}
           <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="flex-1 h-7 bg-muted border-border text-xs" data-testid="select-model">
+            <SelectTrigger className="qw-select flex-1 h-7 text-xs" data-testid="select-model">
               <SelectValue placeholder={isLoadingModels ? "Loading..." : "Auto"} />
             </SelectTrigger>
             <SelectContent>
@@ -3255,25 +3227,24 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </Select>
           {providers.length === 0 && !isLoadingModels && (
             <Link href="/dashboard">
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300">
+              <button className="qw-tool-btn amber">
                 <Settings className="w-3 h-3 mr-1" />
                 Add Key
-              </Button>
+              </button>
             </Link>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
+            type="button"
             onClick={resetContext}
             disabled={isResettingContext || messages.length === 0}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="qw-tool-btn"
             data-testid="button-reset-context"
             title="Refresh LLM context (keeps chat history visible)"
           >
             {isResettingContext ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          </Button>
+          </button>
         </div>
-        <div className="flex gap-2">
+        <div className="qw-ta-row">
           <Textarea
             ref={textareaRef}
             defaultValue=""
@@ -3284,32 +3255,29 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               }
             }}
             placeholder={hasPendingReview ? "Review pending changes first…" : editorMode === "focus" ? "Ask about docs, specs, architecture…" : readOnlyMode ? "Ask about code, architecture, how to run…" : "Instruct the agent… files, tools, and runtime stay in scope."}
-            className={`resize-none text-foreground min-h-[56px] max-h-28 text-sm flex-1 ${hasPendingReview ? "opacity-50" : ""}`}
-            style={{ background: "transparent", border: "0", boxShadow: "none", fontFamily: "DM Sans, system-ui, sans-serif" }}
-            rows={2}
+            className={`qw-ta ${hasPendingReview ? "opacity-50" : ""}`}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
           />
           {isSendingMessage ? (
-            <Button
+            <button
               onClick={stopStream}
-              className="bg-red-600 hover:bg-red-700 h-10 w-10 p-0 rounded-[9px] shrink-0"
+              className="qw-send err"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
               <Square className="w-4 h-4" />
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className={`h-10 w-10 p-0 rounded-[9px] shrink-0 ${hasPendingReview ? "opacity-50" : "qw-send"}`}
-              style={{ background: hasPendingReview ? "rgba(18,212,138,.25)" : "linear-gradient(135deg, #16e39a, #0bbf78)", color: "#042217", boxShadow: hasPendingReview ? "none" : "0 6px 18px rgba(18,212,138,.25)" }}
+              className={`qw-send ${hasPendingReview ? "disabled" : ""}`}
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
               <Send className="w-4 h-4" />
-            </Button>
+            </button>
           )}
         </div>
         </div>
