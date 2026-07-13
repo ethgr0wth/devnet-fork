@@ -2747,22 +2747,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
         display: "flex", flexDirection: "column", overflow: "hidden",
         minHeight: 0, height: "100%",
-        background: "linear-gradient(180deg, rgba(249,99,2,.04), transparent 140px)",
+        background: "linear-gradient(180deg, rgba(18,212,138,.04), transparent 140px)",
       }}
     >
       <div
-        className="flex items-center justify-between border-b border-white/10"
-        style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(0,0,0,.35)" }}
+        className="flex items-center justify-between"
+        style={{ flexShrink: 0, padding: "8px 12px", background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.07)" }}
         data-testid="chat-status-bar"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AI CONSOLE</span>
-          <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: runtimeSessionId ? "#22c55e" : "#6b7280" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
+          <span style={{ fontSize: 10, color: "#12d48a", letterSpacing: "0.14em", fontWeight: 700 }}>KEYSTONE AGENT</span>
+          <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: runtimeSessionId ? "#12d48a" : "#6b7280", boxShadow: runtimeSessionId ? "0 0 8px #12d48a" : "none" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
         </div>
         <div className="flex items-center gap-3 font-mono text-muted-foreground" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
           <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
           {editorMode === "keystone" && (
-            <span style={{ color: readOnlyMode ? "#fbbf24" : "#34d399" }}>{readOnlyMode ? "READ" : "R/W"}</span>
+            <span style={{ color: readOnlyMode ? "#f5a524" : "#12d48a" }}>{readOnlyMode ? "READ" : "R/W"}</span>
           )}
           <span data-testid="status-msg-count">{messages.length} MSG</span>
         </div>
@@ -2776,29 +2776,28 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
             <div className="py-10 px-4" data-testid="chat-empty-state">
-              <div className="max-w-sm mx-auto border border-white/10 rounded-sm overflow-hidden" style={{ background: "rgba(0,0,0,.3)" }}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10" style={{ background: "rgba(249,99,2,.08)" }}>
-                  <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
-                  <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AIOS // AI CONSOLE</span>
+              <div className="qw-chat-empty">
+                <div className="qw-chat-empty-head">
+                  <Bot className="w-4 h-4" style={{ color: "#12d48a" }} />
+                  <span>KeyStone Agent</span>
                 </div>
-                <div className="p-3">
-                  <p className="font-mono text-xs text-muted-foreground">Reads your files. Writes code. Applies edits in place.</p>
-                  <p className="font-mono text-muted-foreground mt-1" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.08em" }}>SELECT A COMMAND OR TYPE BELOW</p>
-                  <div className="mt-3 space-y-1">
+                <div className="qw-chat-empty-body">
+                  <p>Reads your files. Writes code. Applies edits in place — with ownership at every layer.</p>
+                  <p className="qw-hint">Select a command or type below</p>
+                  <div className="mt-1">
                     {[
-                      { k: "F1", label: "EXPLAIN THIS CODEBASE", fill: "Explain this codebase" },
-                      { k: "F2", label: "FIX A BUG", fill: "Fix a bug: " },
-                      { k: "F3", label: "BUILD A FEATURE", fill: "Build a feature: " },
+                      { k: "F1", label: "Explain this codebase", fill: "Explain this codebase" },
+                      { k: "F2", label: "Fix a bug", fill: "Fix a bug: " },
+                      { k: "F3", label: "Build a feature", fill: "Build a feature: " },
                     ].map((c) => (
                       <button
                         key={c.k}
                         onClick={() => { if (textareaRef.current) { textareaRef.current.value = c.fill; textareaRef.current.focus(); } }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-left"
-                        style={{ borderLeft: "2px solid #f96302" }}
+                        className="qw-cmd-btn"
                         data-testid={`key-${c.k.toLowerCase()}`}
                       >
-                        <span className="font-mono font-bold flex-shrink-0" style={{ fontSize: 10, color: "#ff8c1a" }}>{c.k}</span>
-                        <span className="font-mono text-foreground" style={{ fontSize: 11, letterSpacing: "0.06em" }}>{c.label}</span>
+                        <span className="qw-k">{c.k}</span>
+                        <span className="qw-l">{c.label}</span>
                       </button>
                     ))}
                   </div>
@@ -2820,21 +2819,21 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   <div
                     className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0"
                     style={isUser
-                      ? { background: "#f96302" }
-                      : { background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}
+                      ? { background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8 }
+                      : { background: "linear-gradient(135deg, rgba(18,212,138,.25), rgba(245,165,36,.18))", border: "1px solid rgba(18,212,138,.3)", borderRadius: 8 }}
                   >
-                    {isUser ? <User className="w-3.5 h-3.5 text-white" /> : <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />}
+                    {isUser ? <User className="w-3.5 h-3.5" style={{ color: "#8b8798" }} /> : <Bot className="w-3.5 h-3.5" style={{ color: "#12d48a" }} />}
                   </div>
                   <div
-                    className="rounded-sm px-3 py-2 min-w-0 overflow-hidden break-words text-foreground"
+                    className="px-3 py-2.5 min-w-0 overflow-hidden break-words text-foreground"
                     style={{
                       flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere",
-                      background: isUser ? "rgba(249,99,2,.08)" : "rgba(255,255,255,.03)",
-                      border: "1px solid rgba(255,255,255,.06)",
-                      borderLeft: isUser ? "2px solid #f96302" : "2px solid rgba(255,140,26,.4)",
+                      background: isUser ? "rgba(255,255,255,.045)" : "rgba(255,255,255,.03)",
+                      border: "1px solid rgba(255,255,255,.07)",
+                      borderRadius: 12,
                     }}
                   >
-                    <div className="font-mono mb-1" style={{ fontSize: 9, letterSpacing: "0.16em", color: isUser ? "#ff8c1a" : "rgba(255,255,255,.4)" }}>{isUser ? "USR" : "AIOS"}</div>
+                    <div className="mb-1" style={{ fontSize: 10, letterSpacing: "0.08em", fontWeight: 700, color: isUser ? "#8b8798" : "#5a5668" }}>{isUser ? "You" : "KeyStone"}</div>
                     {isUser ? (
                       <p className="text-sm break-words" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}>{msg.content}</p>
                     ) : (() => {
@@ -3125,13 +3124,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               animate={{ opacity: 1, y: 0 }}
               className="flex gap-3"
             >
-              <div className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0" style={{ background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}>
-                <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
+              <div className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, rgba(18,212,138,.25), rgba(245,165,36,.18))", border: "1px solid rgba(18,212,138,.3)", borderRadius: 8 }}>
+                <Bot className="w-3.5 h-3.5" style={{ color: "#12d48a" }} />
               </div>
-              <div className="rounded-sm px-3 py-2" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderLeft: "2px solid #f96302" }}>
+              <div className="px-3 py-2.5" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12 }}>
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#ff8c1a" }} />
-                  <span className="font-mono text-xs text-muted-foreground" style={{ letterSpacing: "0.1em" }}>PROCESSING…</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#12d48a" }} />
+                  <span className="text-xs text-muted-foreground" style={{ letterSpacing: "0.04em", fontWeight: 600 }}>Thinking…</span>
                 </div>
               </div>
             </motion.div>
@@ -3146,7 +3145,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             size="sm"
             variant="outline"
             className="rounded-sm h-7 w-7 p-0 shadow-lg"
-            style={{ background: "rgba(0,0,0,.7)", border: "1px solid rgba(249,99,2,.5)", color: "#ff8c1a" }}
+            style={{ background: "rgba(0,0,0,.7)", border: "1px solid rgba(18,212,138,.45)", color: "#12d48a" }}
             onClick={scrollToBottom}
             data-testid="button-scroll-to-bottom"
           >
@@ -3155,7 +3154,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`${compact ? "p-2.5" : "p-3"} border-t border-white/10 space-y-2`} style={{ flexShrink: 0, background: "rgba(0,0,0,.35)" }}>
+      <div className={`${compact ? "p-2.5" : "p-3"} border-t space-y-2`} style={{ flexShrink: 0, background: "rgba(0,0,0,.28)", borderColor: "rgba(255,255,255,.07)" }}>
+        <div className="rounded-[14px] border p-2.5 space-y-2" style={{ background: "#0e0e14", borderColor: "rgba(255,255,255,.12)", boxShadow: "0 0 0 1px rgba(18,212,138,.05), 0 12px 40px rgba(0,0,0,.25)" }}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3166,28 +3166,28 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
         )}
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center w-fit rounded-sm border border-white/10 overflow-hidden" style={{ background: "rgba(0,0,0,.4)" }}>
+          <div className="flex items-center w-fit rounded-[10px] border overflow-hidden" style={{ background: "#0e0e14", borderColor: "rgba(255,255,255,.07)" }}>
             <button
               onClick={() => setEditorMode("keystone")}
               className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
                 editorMode === "keystone" ? "" : "text-muted-foreground hover:text-foreground"
               }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "keystone" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
-              title="Keystone Mode: Full code editor"
+              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "keystone" ? { background: "rgba(18,212,138,.12)", color: "#12d48a", boxShadow: "inset 0 0 0 1px rgba(18,212,138,.25)" } : {}) }}
+              title="KeyStone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
-              <Code2 className="w-3 h-3 inline mr-1" />KEYSTONE
+              <Code2 className="w-3 h-3 inline mr-1" />KeyStone
             </button>
             <button
               onClick={() => setEditorMode("focus")}
               className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
                 editorMode === "focus" ? "" : "text-muted-foreground hover:text-foreground"
               }`}
-              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "focus" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
+              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "focus" ? { background: "rgba(245,165,36,.14)", color: "#f5a524", boxShadow: "inset 0 0 0 1px rgba(245,165,36,.3)" } : {}) }}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
-              <FileText className="w-3 h-3 inline mr-1" />FOCUS
+              <FileText className="w-3 h-3 inline mr-1" />Focus
             </button>
           </div>
           {editorMode === "keystone" && (
@@ -3204,12 +3204,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               data-testid="button-toggle-read-write"
             >
               {readOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              <span>{readOnlyMode ? "READ-ONLY" : "READ & WRITE"}</span>
+              <span>{readOnlyMode ? "Read only" : "Read & write"}</span>
             </button>
           )}
         </div>
         <div className="flex gap-2 items-center text-xs">
-          <Sparkles className="w-3 h-3" style={{ color: "#ff8c1a" }} />
+          <Sparkles className="w-3 h-3" style={{ color: "#f5a524" }} />
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
               <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
@@ -3266,17 +3266,17 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 sendMessage();
               }
             }}
-            placeholder={hasPendingReview ? "> review pending changes first" : editorMode === "focus" ? "> ask about docs, specs, architecture" : readOnlyMode ? "> ask about code, architecture, how to run" : "> ask, build, fix\u2026"}
-            className={`resize-none font-mono text-foreground min-h-[40px] max-h-24 text-sm rounded-sm ${hasPendingReview ? "opacity-50" : ""}`}
-            style={{ background: "rgba(0,0,0,.4)", borderColor: "rgba(255,255,255,.12)" }}
-            rows={1}
+            placeholder={hasPendingReview ? "Review pending changes first…" : editorMode === "focus" ? "Ask about docs, specs, architecture…" : readOnlyMode ? "Ask about code, architecture, how to run…" : "Instruct the agent… files, tools, and runtime stay in scope."}
+            className={`resize-none text-foreground min-h-[56px] max-h-28 text-sm flex-1 ${hasPendingReview ? "opacity-50" : ""}`}
+            style={{ background: "transparent", border: "0", boxShadow: "none", fontFamily: "DM Sans, system-ui, sans-serif" }}
+            rows={2}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
           />
           {isSendingMessage ? (
             <Button
               onClick={stopStream}
-              className="bg-red-600 hover:bg-red-700 h-auto px-3 rounded-sm"
+              className="bg-red-600 hover:bg-red-700 h-10 w-10 p-0 rounded-[9px] shrink-0"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
@@ -3286,14 +3286,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             <Button
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className={`h-auto px-3 rounded-sm ${hasPendingReview ? "opacity-50" : "qw-send"}`}
-              style={{ background: hasPendingReview ? "rgba(18,212,138,.25)" : undefined }}
+              className={`h-10 w-10 p-0 rounded-[9px] shrink-0 ${hasPendingReview ? "opacity-50" : "qw-send"}`}
+              style={{ background: hasPendingReview ? "rgba(18,212,138,.25)" : "linear-gradient(135deg, #16e39a, #0bbf78)", color: "#042217", boxShadow: hasPendingReview ? "none" : "0 6px 18px rgba(18,212,138,.25)" }}
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
               <Send className="w-4 h-4" />
             </Button>
           )}
+        </div>
         </div>
       </div>
     </div>
@@ -4024,10 +4025,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </div>
                 </>
               ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  <div className="text-center">
-                    <Code2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>Select a file to edit</p>
+                <div className="qw-editor-empty">
+                  <div className="qw-editor-empty-inner">
+                    <div className="qw-editor-empty-mark" aria-hidden="true"><span>K</span></div>
+                    <div className="qw-editor-empty-title">Select a file to edit</div>
+                    <p className="qw-editor-empty-sub">Open something from the tree, import an artifact, or ask the agent to scaffold it.</p>
                   </div>
                 </div>
               )}
