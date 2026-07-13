@@ -6,7 +6,7 @@ import {
   Trash2, Edit2, Save, X, Code2, MessageSquare,
   Settings, Play, RefreshCw, ChevronRight,
   FileCode, FileJson, FileText, Sparkles, Bot, User, Square,
-  AlertCircle, Download, Github, Loader2, FolderArchive,
+  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,
   Terminal, Rocket, ScrollText, Search, ChevronDown,
   Package, Server, Activity, Eye, Cpu, HardDrive,
   GitBranch, FolderGit, Zap, Shield, MoreHorizontal,
