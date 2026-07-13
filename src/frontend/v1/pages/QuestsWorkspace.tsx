@@ -720,12 +720,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   useEffect(() => {
     apiFetch("/api/auth/me").then(r => r.json()).then(data => {
       const u = data?.user || data;
-      if (u?.plan) setUserPlan(u.plan);
-      if (u?.role && ["manager", "super_admin"].includes(u.role)) setUserPlan("enterprise");
+      if (u?.plan) setUserPlan(String(u.plan).toLowerCase());
+      const role = String(u?.role || u?.user_role || "").toLowerCase();
+      const adminRoles = ["admin", "manager", "super_admin", "superadmin", "owner", "root"];
+      if (adminRoles.includes(role) || u?.is_admin === true || u?.is_superuser === true) {
+        setUserPlan("enterprise");
+      }
     }).catch(() => {});
   }, []);
 
-  const isEnterprise = userPlan === "enterprise" || userPlan === "pro";
+  const isEnterprise = ["enterprise", "pro", "admin", "business", "team"].includes(String(userPlan || "").toLowerCase());
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -2151,12 +2155,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col h-full"
+      className="flex flex-col h-full qw-panel-body"
       data-testid="tab-content-terminal"
     >
-      <div className="flex items-center gap-2 p-3 border-b border-border">
-        <Terminal className="w-4 h-4 text-emerald-400" />
-        <span className="text-sm font-medium text-foreground">Code Runner</span>
+      <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
+        <Terminal className="w-4 h-4" style={{ color: "#12d48a" }} />
+        <div className="min-w-0">
+          <div className="qw-panel-kicker">Terminal</div>
+          <span className="text-sm font-semibold text-foreground">Code Runner</span>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Select value={termLang} onValueChange={(v) => handleLangChange(v as "python" | "node")}>
             <SelectTrigger className="h-7 w-24 text-xs bg-muted border-border" data-testid="select-terminal-lang">
@@ -2266,7 +2273,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   );
 
   const renderSettingsContent = () => (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1" data-testid="tab-content-settings">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1 qw-panel-body" data-testid="tab-content-settings">
+      <div className="mb-1">
+        <div className="qw-panel-kicker">Settings</div>
+        <h2 className="text-base font-semibold text-foreground">Environment</h2>
+      </div>
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5" />
@@ -2367,14 +2378,17 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col h-full"
+      className="flex flex-col h-full qw-panel-body"
       data-testid="tab-content-deploy"
     >
-      <div className="flex items-center gap-2 p-3 border-b border-border">
-        <Rocket className="w-4 h-4 text-blue-400" />
-        <span className="text-sm font-medium text-foreground">Manage</span>
+      <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
+        <Rocket className="w-4 h-4 text-sky-400" />
+        <div className="min-w-0 flex-1">
+          <div className="qw-panel-kicker">Manage</div>
+          <span className="text-sm font-semibold text-foreground">Processes & deploy</span>
+        </div>
         {runtimeSessionId && (
-          <span className="ml-auto text-[10px] text-muted-foreground font-mono" data-testid="text-session-id">
+          <span className="text-[10px] text-muted-foreground font-mono" data-testid="text-session-id">
             {runtimeSessionId.slice(0, 8)}
           </span>
         )}
@@ -2654,9 +2668,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         className="flex flex-col h-full"
         data-testid="tab-content-ledger"
       >
-        <div className="flex items-center gap-2 p-3 border-b border-border">
-          <ScrollText className="w-4 h-4 text-amber-400" />
-          <span className="text-sm font-medium text-foreground">Tool Ledger</span>
+        <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
+          <ScrollText className="w-4 h-4" style={{ color: "#f5a524" }} />
+          <div className="min-w-0 flex-1">
+            <div className="qw-panel-kicker">Ledger</div>
+            <span className="text-sm font-semibold text-foreground">Tool Ledger</span>
+          </div>
           <div className="ml-auto flex items-center gap-2">
             <Select value={ledgerFilter} onValueChange={setLedgerFilter}>
               <SelectTrigger className="h-7 w-28 text-xs bg-muted border-border" data-testid="select-ledger-filter">
@@ -2775,8 +2792,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       >
         <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
-            <div className="py-10 px-4" data-testid="chat-empty-state">
-              <div className="qw-chat-empty">
+            <div className="py-6 px-4 min-h-[240px] flex items-start justify-center" data-testid="chat-empty-state">
+              <div className="qw-chat-empty w-full">
                 <div className="qw-chat-empty-head">
                   <Bot className="w-4 h-4" style={{ color: "#12d48a" }} />
                   <span>KeyStone Agent</span>
@@ -3683,28 +3700,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       </header>
 
-      <div className="qw-command flex-shrink-0">
-        <div className="qw-command-input">
-          <Search className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">Search files, symbols, tools… or ask the agent</span>
-          <kbd>⌘K</kbd>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="qw-seg" role="tablist" aria-label="Editor mode">
-            <button type="button" className={editorMode === "keystone" ? "qw-active" : ""} onClick={() => setEditorMode("keystone")}>KeyStone</button>
-            <button type="button" className={editorMode === "focus" ? "qw-active" : ""} onClick={() => setEditorMode("focus")}>Focus</button>
-          </div>
-          {pendingPatchCount > 0 && (
-            <Button size="sm" className="h-8 text-xs qw-btn-amber" onClick={() => {
-              const first = gexModifiedFiles.find(f => !gexPatchAccepted.has(f));
-              if (first) loadFile(first);
-            }}>
-              Review {pendingPatchCount} patch{pendingPatchCount > 1 ? "es" : ""}
-            </Button>
-          )}
-        </div>
-      </div>
-
       <div className="flex-1 overflow-hidden min-h-0">
         <ResizablePanelGroup direction="horizontal">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
@@ -4038,34 +4033,29 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
           <ResizableHandle />
 
-          <ResizablePanel defaultSize={35} minSize={25}>
+          <ResizablePanel defaultSize={38} minSize={28}>
             <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
               <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-                <TabsList className="border-b border-[var(--qw-line)] rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
-                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-2.5 py-1.5 text-xs" data-testid="tab-chat">
-                    <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
+                <TabsList className="qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full">
+                  <TabsTrigger value="chat" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-chat">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
+                    {messages.length > 0 && <span className="qw-tab-count ml-1.5">{messages.length}</span>}
                   </TabsTrigger>
-                  {isEnterprise && (
-                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
-                      <Terminal className="w-3.5 h-3.5 mr-1" />Terminal
-                    </TabsTrigger>
-                  )}
-                  {isEnterprise && (
-                    <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-deploy">
-                      <Rocket className="w-3.5 h-3.5 mr-1" />Manage
-                    </TabsTrigger>
-                  )}
-                  {isEnterprise && (
-                    <TabsTrigger value="ledger" className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-ledger">
-                      <ScrollText className="w-3.5 h-3.5 mr-1" />Ledger
-                    </TabsTrigger>
-                  )}
-                  <TabsTrigger value="artifacts" className="rounded-none border-b-2 border-transparent data-[state=active]:border-violet-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-artifacts">
-                    <Package className="w-3.5 h-3.5 mr-1" />Artifacts
-                    {ksArtifacts.length > 0 && <span className="ml-1 bg-violet-500/20 text-violet-300 text-[10px] px-1.5 rounded-full">{ksArtifacts.length}</span>}
+                  <TabsTrigger value="terminal" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-terminal">
+                    <Terminal className="w-3.5 h-3.5 mr-1.5" />Terminal
                   </TabsTrigger>
-                  <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-settings">
-                    <Settings className="w-3.5 h-3.5 mr-1" />Settings
+                  <TabsTrigger value="deploy" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-deploy">
+                    <Rocket className="w-3.5 h-3.5 mr-1.5" />Manage
+                  </TabsTrigger>
+                  <TabsTrigger value="ledger" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-amber)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-ledger">
+                    <ScrollText className="w-3.5 h-3.5 mr-1.5" />Ledger
+                  </TabsTrigger>
+                  <TabsTrigger value="artifacts" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-violet)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-artifacts">
+                    <Package className="w-3.5 h-3.5 mr-1.5" />Artifacts
+                    {ksArtifacts.length > 0 && <span className="qw-tab-count ml-1.5">{ksArtifacts.length}</span>}
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-orange-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-settings">
+                    <Settings className="w-3.5 h-3.5 mr-1.5" />Settings
                   </TabsTrigger>
                 </TabsList>
 
@@ -4073,29 +4063,26 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     {renderChatPanel()}
                   </TabsContent>
 
-                  {isEnterprise && (
-                    <TabsContent value="terminal" className="flex-1 flex flex-col m-0 overflow-hidden">
-                      {renderTerminalTab()}
-                    </TabsContent>
-                  )}
+                  <TabsContent value="terminal" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                    {renderTerminalTab()}
+                  </TabsContent>
 
-                  {isEnterprise && (
-                    <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">
-                      {renderDeployTab()}
-                    </TabsContent>
-                  )}
+                  <TabsContent value="deploy" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                    {renderDeployTab()}
+                  </TabsContent>
 
-                  {isEnterprise && (
-                    <TabsContent value="ledger" className="flex-1 flex flex-col m-0 overflow-hidden">
-                      {renderLedgerTab()}
-                    </TabsContent>
-                  )}
+                  <TabsContent value="ledger" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                    {renderLedgerTab()}
+                  </TabsContent>
 
-                  <TabsContent value="artifacts" className="flex-1 flex flex-col m-0 overflow-hidden">
-                    <div className="p-4 space-y-3 overflow-y-auto flex-1" data-testid="panel-artifacts-ks">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-foreground">Saved Artifacts</h3>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadKsArtifacts} title="Refresh">
+                  <TabsContent value="artifacts" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                    <div className="p-4 space-y-3 overflow-y-auto flex-1 qw-panel-body" data-testid="panel-artifacts-ks">
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <div className="qw-panel-kicker">Artifacts</div>
+                          <h3 className="text-sm font-semibold text-foreground">Saved from Playground</h3>
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={loadKsArtifacts} title="Refresh">
                           <RefreshCw className="w-3.5 h-3.5" />
                         </Button>
                       </div>
@@ -4104,15 +4091,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                           <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
                         </div>
                       ) : ksArtifacts.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">
-                          <Package className="w-7 h-7 mx-auto mb-2 opacity-50" />
-                          <p>No artifacts yet</p>
-                          <p className="text-xs mt-1 opacity-60">Save code from Playground to see them here</p>
+                        <div className="qw-panel-empty">
+                          <div className="qw-panel-empty-icon"><Package className="w-6 h-6" /></div>
+                          <p className="qw-panel-empty-title">No artifacts yet</p>
+                          <p className="qw-panel-empty-sub">Save code from Playground to import it here.</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
                           {ksArtifacts.map((artifact) => (
-                            <div key={artifact.id} className="bg-muted/30 border border-border rounded-lg p-3 group hover:border-violet-500/30 transition-colors">
+                            <div key={artifact.id} className="qw-artifact-card group">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   {renamingKsArtifactId === artifact.id ? (

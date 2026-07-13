@@ -1954,3 +1954,80 @@
 .qw-provider-row {
   gap: 8px !important;
 }
+
+
+/* Agent rail — full 6-tab mockup */
+.qw-agent-tabs {
+  gap: 0 !important;
+  scrollbar-width: none;
+}
+.qw-agent-tabs::-webkit-scrollbar { display: none; }
+.qw-agent-tab {
+  color: var(--qw-muted) !important;
+  letter-spacing: 0.01em;
+}
+.qw-agent-tab[data-state="active"] {
+  color: var(--qw-text) !important;
+}
+.qw-tab-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--qw-violet-dim);
+  color: var(--qw-violet);
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--qw-font-mono);
+}
+.qw-panel-kicker {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--qw-emerald);
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 1px;
+}
+.qw-panel-body {
+  background: transparent;
+}
+.qw-panel-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--qw-muted);
+}
+.qw-panel-empty-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--qw-line);
+  color: var(--qw-violet);
+}
+.qw-panel-empty-title {
+  font-family: var(--qw-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--qw-text);
+  margin-bottom: 4px;
+}
+.qw-panel-empty-sub {
+  font-size: 12px;
+  color: var(--qw-muted);
+  line-height: 1.45;
+  max-width: 220px;
+  margin: 0 auto;
+}
+.qw-artifact-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--qw-line);
+  border-radius: 12px;
+  padding: 12px;
+  transition: border-color .15s, background .15s;
+}
+.qw-artifact-card:hover {
+  border-color: rgba(167,139,250,0.35);
+  background: rgba(167,139,250,0.06);
+}
