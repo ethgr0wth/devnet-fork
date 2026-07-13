@@ -3348,8 +3348,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   );
 
   if (isMobile) {
+    // h-full, NOT 100dvh: this box lives inside AiOS's AppWindow, itself below
+    // the global titlebar (44px) + the window's own per-app titlebar (40px) —
+    // ~84px of chrome this box doesn't own. 100dvh demanded the FULL device
+    // viewport regardless, overflowing its real container by that ~84px. The
+    // overflow was invisible at rest (header sat naturally in view, the bottom
+    // nav quietly clipped below the fold) until chatEndRef's scrollIntoView on
+    // message load gave the browser a reason to scroll the ancestor by ~that
+    // same 84px — revealing the nav at the bottom while pushing the header out
+    // above it. One scroll event, two symptoms; h-full removes the overflow
+    // outright so there's no ancestor slack left for any scroll to exploit.
     return (
-      <div className="bg-background flex flex-col" style={{ height: "100dvh" }}>
+      <div className="bg-background flex flex-col h-full overflow-hidden">
         <header className="glass-header flex-shrink-0 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
           <div className="flex items-center justify-between px-3 py-2 relative z-10">

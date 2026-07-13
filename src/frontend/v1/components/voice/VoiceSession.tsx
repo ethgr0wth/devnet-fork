@@ -1,15 +1,24 @@
 /**
- * v1 runtime — VoiceSession placeholder.
+ * v1 runtime — VoiceSession bridge.
  *
  * The REAL v1 VoiceSession is 1,119 lines riding the full Three.js /
- * react-three-fiber / postprocessing stack (the ElectricOrb scene). It ships
- * with the dedicated Voice app port; pulling the 3D stack in as a side
- * effect of Playground would balloon the bundle for a feature behind one
- * button. Same swap discipline as v1's own lightweight fallbacks.
+ * react-three-fiber / postprocessing stack (the ElectricOrb scene). Pulling
+ * that 3D stack into this window as a side effect of one button would
+ * balloon the bundle for every AiOS user, not just the ones who use voice.
+ *
+ * 2026-07-13 (Mark): a prior version of this card described that tradeoff to
+ * END USERS instead of solving it for them — internal roadmap language
+ * ("arrives with the Voice app port") leaking into production copy on a live
+ * app. Never again: this is a real, honest bridge. It opens the ACTUAL,
+ * fully-working v1 voice session on the user's production account in a new
+ * tab — a working feature, not a description of a missing one. The native
+ * in-window orb is still real future work; it is not this card's job to
+ * apologize for that to a user just trying to talk to their assistant.
  */
 import React from "react";
 import { motion } from "framer-motion";
-import { Mic, X } from "lucide-react";
+import { Mic, X, ArrowUpRight } from "lucide-react";
+import { aias } from "../../../aias";
 
 export function VoiceSession({ onClose }: { onClose: () => void; workspaceId?: string }) {
   return (
@@ -27,9 +36,17 @@ export function VoiceSession({ onClose }: { onClose: () => void; workspaceId?: s
         </motion.div>
         <h3 className="text-lg font-bold text-white">Voice sessions</h3>
         <p className="mt-1.5 text-sm text-zinc-400">
-          Live voice arrives with the Voice app port — the full session orb
-          runs there, on your production account.
+          The full voice experience opens in its own tab, on your account.
         </p>
+        <button
+          onClick={() => {
+            window.open(`${aias.appBase}/dashboard/voice-chat`, "_blank", "noopener,noreferrer");
+            onClose();
+          }}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500"
+        >
+          Open Voice Chat <ArrowUpRight className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );

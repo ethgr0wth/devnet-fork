@@ -140,14 +140,11 @@
                         <span class="sidebar-label">Pings</span>
                         <span id="notification-badge" class="notification-badge-expanded ml-auto w-5 h-5 bg-emerald-500 rounded-full text-[10px] text-white font-bold flex items-center justify-center hidden">0</span>
                     </button>
-                    <button id="nav-geppetto" class="sidebar-btn" title="Bots">
-                        <i data-lucide="bot" class="w-5 h-5 flex-shrink-0"></i>
-                        <span class="sidebar-label">Bots</span>
-                    </button>
-                    <button id="nav-docs" class="sidebar-btn" title="Docs">
-                        <i data-lucide="book-open" class="w-5 h-5 flex-shrink-0"></i>
-                        <span class="sidebar-label">Docs</span>
-                    </button>
+                    <!-- Bots (Geppetto) + Docs are DevNet-specific surfaces, hidden
+                         from the AiAS sidebar for now (Mark, 2026-07-13). The
+                         app.ts click handlers use optional chaining, so their
+                         absence is a safe no-op. Restore these buttons to bring
+                         the DevNet bot platform / docs back into the nav. -->
                     <button id="nav-admin" class="sidebar-btn hidden" title="Admin">
                         <i data-lucide="shield" class="w-5 h-5 flex-shrink-0"></i>
                         <span class="sidebar-label">Admin</span>
