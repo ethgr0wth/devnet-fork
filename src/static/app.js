@@ -109926,7 +109926,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       ] }) })
     ] });
     if (isMobile) {
-      return /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "bg-background flex flex-col", style: { height: "100dvh" }, children: [
+      return /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "bg-background flex flex-col h-full overflow-hidden", children: [
         /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("header", { className: "glass-header flex-shrink-0 relative overflow-hidden", children: [
           /* @__PURE__ */ (0, import_jsx_runtime68.jsx)("div", { className: "absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" }),
           /* @__PURE__ */ (0, import_jsx_runtime68.jsxs)("div", { className: "flex items-center justify-between px-3 py-2 relative z-10", children: [
