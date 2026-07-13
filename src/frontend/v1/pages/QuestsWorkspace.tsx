@@ -11,7 +11,8 @@ import {
   Package, Server, Activity, Eye, Cpu, HardDrive,
   GitBranch, FolderGit, Zap, Shield, MoreHorizontal,
   ArrowDown, Filter, Clock, Braces, FunctionSquare, ScanSearch,
-  RotateCcw, CheckCircle2, FileWarning, Copy, FileEdit, Pencil
+  RotateCcw, CheckCircle2, FileWarning, Copy, FileEdit, Pencil,
+  Globe, ExternalLink
 } from "lucide-react";
 import aiasLogo from "../assets/logo.png";
 import { Button } from "@/components/ui/button";
@@ -407,6 +408,9 @@ export default function QuestsWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("chat");
+  const [bottomTab, setBottomTab] = useState<"terminal" | "preview">("terminal");
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewPort, setPreviewPort] = useState<string>("3000");
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<"keystone" | "focus">("keystone");
@@ -2266,6 +2270,100 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     </motion.div>
   );
 
+  const renderPreviewPanel = () => (
+    <div className="h-full flex flex-col bg-[#07070c]">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background/60 flex-shrink-0">
+        <Globe className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <input
+          type="text"
+          value={previewPort}
+          onChange={(e) => setPreviewPort(e.target.value.replace(/\D/g, ""))}
+          placeholder="3000"
+          className="w-16 bg-transparent border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:border-indigo-500"
+          data-testid="input-preview-port"
+        />
+        <button
+          onClick={() => setPreviewUrl(`https://${window.location.hostname.replace(/^[^.]+/, `${window.location.hostname.split('.')[0]}-${previewPort}`)}`)}
+          className="px-2 py-0.5 rounded bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs font-medium transition-colors"
+          data-testid="button-preview-open"
+        >
+          Open
+        </button>
+        {previewUrl && (
+          <>
+            <span className="flex-1 text-[10px] text-muted-foreground truncate font-mono">{previewUrl}</span>
+            <button
+              onClick={() => setPreviewUrl("")}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-preview-close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => window.open(previewUrl, "_blank")}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-preview-external"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 relative">
+        {previewUrl ? (
+          <iframe
+            key={previewUrl}
+            src={previewUrl}
+            className="w-full h-full border-0 bg-white"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            data-testid="iframe-preview"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="text-center space-y-2">
+              <Globe className="w-10 h-10 mx-auto opacity-20" />
+              <p className="text-sm">Enter a port and click Open</p>
+              <p className="text-xs opacity-60">Your app will preview here</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderBottomDock = () => (
+    <div className="h-full flex flex-col bg-[#07070c]">
+      <div className="flex items-center border-b border-border bg-black/40 flex-shrink-0">
+        <button
+          onClick={() => setBottomTab("terminal")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors ${
+            bottomTab === "terminal"
+              ? "border-emerald-400 text-emerald-300 bg-white/5"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-bottom-terminal"
+        >
+          <Terminal className="w-3.5 h-3.5" />Terminal
+        </button>
+        <button
+          onClick={() => setBottomTab("preview")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors ${
+            bottomTab === "preview"
+              ? "border-indigo-400 text-indigo-300 bg-white/5"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid="tab-bottom-preview"
+        >
+          <Globe className="w-3.5 h-3.5" />Preview
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {bottomTab === "terminal" && renderTerminalTab()}
+        {bottomTab === "preview" && renderPreviewPanel()}
+      </div>
+    </div>
+  );
+
   const renderSettingsContent = () => (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1" data-testid="tab-content-settings">
       <div>
@@ -3745,8 +3843,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
           <ResizableHandle />
 
-          <ResizablePanel defaultSize={45}>
-            <div className="h-full flex flex-col bg-background">
+          <ResizablePanel defaultSize={47} minSize={30}>
+            <ResizablePanelGroup direction="vertical" className="h-full">
+              <ResizablePanel defaultSize={65} minSize={30}>
+                <div className="h-full flex flex-col bg-background">
               {openTabs.length > 0 ? (
                 <>
                   <div className="border-b border-border bg-background/80 flex flex-col">
@@ -3959,7 +4059,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </div>
                 </div>
               )}
-            </div>
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={35} minSize={20}>
+                {renderBottomDock()}
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
 
           <ResizableHandle />
@@ -3972,11 +4078,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
                     {messages.length > 0 && <span className="qw-tab-count ml-1.5">{messages.length}</span>}
                   </TabsTrigger>
-                  {isEnterprise && (
-                    <TabsTrigger value="terminal" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-terminal">
-                      <Terminal className="w-3.5 h-3.5 mr-1.5" />Terminal
-                    </TabsTrigger>
-                  )}
                   {isEnterprise && (
                     <TabsTrigger value="deploy" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-deploy">
                       <Rocket className="w-3.5 h-3.5 mr-1.5" />Manage
@@ -3999,12 +4100,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
                     {renderChatPanel()}
                   </TabsContent>
-
-                  {isEnterprise && (
-                    <TabsContent value="terminal" className="flex-1 flex flex-col m-0 overflow-hidden">
-                      {renderTerminalTab()}
-                    </TabsContent>
-                  )}
 
                   {isEnterprise && (
                     <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">

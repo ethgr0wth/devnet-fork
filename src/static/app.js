@@ -108509,6 +108509,9 @@ ${example}` : example),
     const [chatInput, setChatInput] = (0, import_react69.useState)("");
     const [isSendingMessage, setIsSendingMessage] = (0, import_react69.useState)(false);
     const [activeTab, setActiveTab] = (0, import_react69.useState)("chat");
+    const [bottomTab, setBottomTab] = (0, import_react69.useState)("terminal");
+    const [previewUrl, setPreviewUrl] = (0, import_react69.useState)("");
+    const [previewPort, setPreviewPort] = (0, import_react69.useState)("3000");
     const [selectedModel, setSelectedModel] = (0, import_react69.useState)("");
     const [chatError, setChatError] = (0, import_react69.useState)(null);
     const [editorMode, setEditorMode] = (0, import_react69.useState)("keystone");
@@ -110377,6 +110380,98 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         ]
       }
     );
+    const renderPreviewPanel = () => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "h-full flex flex-col bg-[#07070c]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-border bg-background/60 flex-shrink-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Globe, { className: "w-3.5 h-3.5 text-muted-foreground flex-shrink-0" }),
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+          "input",
+          {
+            type: "text",
+            value: previewPort,
+            onChange: (e) => setPreviewPort(e.target.value.replace(/\D/g, "")),
+            placeholder: "3000",
+            className: "w-16 bg-transparent border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:border-indigo-500",
+            "data-testid": "input-preview-port"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+          "button",
+          {
+            onClick: () => setPreviewUrl(`https://${window.location.hostname.replace(/^[^.]+/, `${window.location.hostname.split(".")[0]}-${previewPort}`)}`),
+            className: "px-2 py-0.5 rounded bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs font-medium transition-colors",
+            "data-testid": "button-preview-open",
+            children: "Open"
+          }
+        ),
+        previewUrl && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(import_jsx_runtime81.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "flex-1 text-[10px] text-muted-foreground truncate font-mono", children: previewUrl }),
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+            "button",
+            {
+              onClick: () => setPreviewUrl(""),
+              className: "text-muted-foreground hover:text-foreground transition-colors",
+              "data-testid": "button-preview-close",
+              children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(X, { className: "w-3.5 h-3.5" })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+            "button",
+            {
+              onClick: () => window.open(previewUrl, "_blank"),
+              className: "text-muted-foreground hover:text-foreground transition-colors",
+              "data-testid": "button-preview-external",
+              children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ExternalLink, { className: "w-3.5 h-3.5" })
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex-1 min-h-0 relative", children: previewUrl ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+        "iframe",
+        {
+          src: previewUrl,
+          className: "w-full h-full border-0 bg-white",
+          sandbox: "allow-scripts allow-same-origin allow-forms allow-popups allow-modals",
+          "data-testid": "iframe-preview"
+        },
+        previewUrl
+      ) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center justify-center h-full text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "text-center space-y-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Globe, { className: "w-10 h-10 mx-auto opacity-20" }),
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-sm", children: "Enter a port and click Open" }),
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-xs opacity-60", children: "Your app will preview here" })
+      ] }) }) })
+    ] });
+    const renderBottomDock = () => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "h-full flex flex-col bg-[#07070c]", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center border-b border-border bg-black/40 flex-shrink-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+          "button",
+          {
+            onClick: () => setBottomTab("terminal"),
+            className: `flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors ${bottomTab === "terminal" ? "border-emerald-400 text-emerald-300 bg-white/5" : "border-transparent text-muted-foreground hover:text-foreground"}`,
+            "data-testid": "tab-bottom-terminal",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Terminal, { className: "w-3.5 h-3.5" }),
+              "Terminal"
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+          "button",
+          {
+            onClick: () => setBottomTab("preview"),
+            className: `flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors ${bottomTab === "preview" ? "border-indigo-400 text-indigo-300 bg-white/5" : "border-transparent text-muted-foreground hover:text-foreground"}`,
+            "data-testid": "tab-bottom-preview",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Globe, { className: "w-3.5 h-3.5" }),
+              "Preview"
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex-1 min-h-0 overflow-hidden", children: [
+        bottomTab === "terminal" && renderTerminalTab(),
+        bottomTab === "preview" && renderPreviewPanel()
+      ] })
+    ] });
     const renderSettingsContent = () => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(motion.div, { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, className: "p-4 space-y-6 overflow-y-auto flex-1", "data-testid": "tab-content-settings", children: [
       /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("h3", { className: "text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2", children: [
@@ -111678,237 +111773,241 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           ] })
         ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizableHandle, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 45, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "h-full flex flex-col bg-background", children: openTabs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(import_jsx_runtime81.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "border-b border-border bg-background/80 flex flex-col", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center overflow-x-auto scrollbar-thin", children: openTabs.map((tab2) => {
-              const isActive = tab2 === selectedFile;
-              const isGexMod = gexModifiedFiles.includes(tab2);
-              const isAccepted = gexPatchAccepted.has(tab2);
-              const tabDirty = tabContents[tab2] && tabContents[tab2].content !== tabContents[tab2].original;
-              const fileName = tab2.split("/").pop() || tab2;
-              return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                "div",
-                {
-                  className: `group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${isActive ? "bg-background text-foreground border-b-2 border-b-indigo-500" : "bg-muted/30 text-muted-foreground hover:bg-muted/60"} ${isGexMod && !isAccepted ? "border-t-2 border-t-red-500" : ""} ${isAccepted ? "border-t-2 border-t-green-500" : ""}`,
-                  onClick: () => switchTab(tab2),
-                  "data-testid": `tab-${tab2}`,
-                  children: [
-                    getFileIcon(fileName),
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "truncate max-w-[120px]", children: fileName }),
-                    tabDirty && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" }),
-                    isGexMod && !isAccepted && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileWarning, { className: "w-3 h-3 text-red-400 shrink-0" }),
-                    isAccepted && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-400 shrink-0" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-                      "button",
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 47, minSize: 30, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(ResizablePanelGroup, { direction: "vertical", className: "h-full", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 65, minSize: 30, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "h-full flex flex-col bg-background", children: openTabs.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(import_jsx_runtime81.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "border-b border-border bg-background/80 flex flex-col", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center overflow-x-auto scrollbar-thin", children: openTabs.map((tab2) => {
+                const isActive = tab2 === selectedFile;
+                const isGexMod = gexModifiedFiles.includes(tab2);
+                const isAccepted = gexPatchAccepted.has(tab2);
+                const tabDirty = tabContents[tab2] && tabContents[tab2].content !== tabContents[tab2].original;
+                const fileName = tab2.split("/").pop() || tab2;
+                return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                  "div",
+                  {
+                    className: `group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${isActive ? "bg-background text-foreground border-b-2 border-b-indigo-500" : "bg-muted/30 text-muted-foreground hover:bg-muted/60"} ${isGexMod && !isAccepted ? "border-t-2 border-t-red-500" : ""} ${isAccepted ? "border-t-2 border-t-green-500" : ""}`,
+                    onClick: () => switchTab(tab2),
+                    "data-testid": `tab-${tab2}`,
+                    children: [
+                      getFileIcon(fileName),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "truncate max-w-[120px]", children: fileName }),
+                      tabDirty && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" }),
+                      isGexMod && !isAccepted && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileWarning, { className: "w-3 h-3 text-red-400 shrink-0" }),
+                      isAccepted && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-400 shrink-0" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                        "button",
+                        {
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            closeTab(tab2);
+                          },
+                          className: "ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity",
+                          "data-testid": `close-tab-${tab2}`,
+                          children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(X, { className: "w-3 h-3" })
+                        }
+                      )
+                    ]
+                  },
+                  tab2
+                );
+              }) }),
+              selectedFile && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-2 py-1 bg-background/50 border-t border-border/50", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
+                  selectedFile.endsWith(".py") && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(import_jsx_runtime81.Fragment, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                      Button,
                       {
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          closeTab(tab2);
+                        variant: "ghost",
+                        size: "sm",
+                        className: "text-muted-foreground text-xs h-6 px-2",
+                        title: "Functions Map",
+                        onClick: async () => {
+                          try {
+                            const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/functions?path=${encodeURIComponent(selectedFile)}`);
+                            const data = await res.json();
+                            const fns = data.functions || [];
+                            if (fns.length === 0) {
+                              toast.info("No functions found");
+                              return;
+                            }
+                            toast.success(`${fns.length} functions: ${fns.map((f) => `${f.name}(${f.args.join(",")}):L${f.line}`).join(", ")}`, { duration: 8e3 });
+                          } catch {
+                            toast.error("Analysis failed");
+                          }
                         },
-                        className: "ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity",
-                        "data-testid": `close-tab-${tab2}`,
-                        children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(X, { className: "w-3 h-3" })
+                        "data-testid": "button-functions-map",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SquareFunction, { className: "w-3 h-3 mr-1" }),
+                          "Fns"
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                      Button,
+                      {
+                        variant: "ghost",
+                        size: "sm",
+                        className: "text-muted-foreground text-xs h-6 px-2",
+                        title: "Bracket Check",
+                        onClick: async () => {
+                          try {
+                            const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/brackets?path=${encodeURIComponent(selectedFile)}`);
+                            const data = await res.json();
+                            data.balanced ? toast.success("Brackets balanced") : toast.error(`Bracket mismatch at position ${data.error_at || "unknown"}`);
+                          } catch {
+                            toast.error("Analysis failed");
+                          }
+                        },
+                        "data-testid": "button-bracket-check",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Braces, { className: "w-3 h-3 mr-1" }),
+                          "Check"
+                        ]
                       }
                     )
-                  ]
-                },
-                tab2
-              );
-            }) }),
-            selectedFile && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-2 py-1 bg-background/50 border-t border-border/50", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
-                selectedFile.endsWith(".py") && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(import_jsx_runtime81.Fragment, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                    Button,
-                    {
-                      variant: "ghost",
-                      size: "sm",
-                      className: "text-muted-foreground text-xs h-6 px-2",
-                      title: "Functions Map",
-                      onClick: async () => {
-                        try {
-                          const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/functions?path=${encodeURIComponent(selectedFile)}`);
-                          const data = await res.json();
-                          const fns = data.functions || [];
-                          if (fns.length === 0) {
-                            toast.info("No functions found");
-                            return;
-                          }
-                          toast.success(`${fns.length} functions: ${fns.map((f) => `${f.name}(${f.args.join(",")}):L${f.line}`).join(", ")}`, { duration: 8e3 });
-                        } catch {
-                          toast.error("Analysis failed");
-                        }
-                      },
-                      "data-testid": "button-functions-map",
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SquareFunction, { className: "w-3 h-3 mr-1" }),
-                        "Fns"
-                      ]
-                    }
-                  ),
-                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                    Button,
-                    {
-                      variant: "ghost",
-                      size: "sm",
-                      className: "text-muted-foreground text-xs h-6 px-2",
-                      title: "Bracket Check",
-                      onClick: async () => {
-                        try {
-                          const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/brackets?path=${encodeURIComponent(selectedFile)}`);
-                          const data = await res.json();
-                          data.balanced ? toast.success("Brackets balanced") : toast.error(`Bracket mismatch at position ${data.error_at || "unknown"}`);
-                        } catch {
-                          toast.error("Analysis failed");
-                        }
-                      },
-                      "data-testid": "button-bracket-check",
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Braces, { className: "w-3 h-3 mr-1" }),
-                        "Check"
-                      ]
-                    }
-                  )
+                  ] }),
+                  gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 ml-2", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                      Button,
+                      {
+                        variant: "ghost",
+                        size: "sm",
+                        className: "text-green-400 hover:text-green-300 text-xs h-6 px-2",
+                        onClick: () => acceptGexFile(selectedFile),
+                        "data-testid": "button-accept-patch",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 mr-1" }),
+                          "Accept"
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                      Button,
+                      {
+                        variant: "ghost",
+                        size: "sm",
+                        className: "text-red-400 hover:text-red-300 text-xs h-6 px-2",
+                        onClick: () => revertGexFile(selectedFile),
+                        "data-testid": "button-revert-patch",
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3 mr-1" }),
+                          "Revert"
+                        ]
+                      }
+                    )
+                  ] })
                 ] }),
-                gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 ml-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Button, { variant: "ghost", size: "sm", onClick: saveFile, disabled: !hasUnsavedChanges || isSavingFile, className: "text-muted-foreground text-xs h-6 px-2", "data-testid": "button-save-file", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Save, { className: "w-3 h-3 mr-1" }),
+                    "Save"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Button, { variant: "ghost", size: "sm", onClick: () => window.open(`/api/keystone/environments/${envId}/files/download?path=${encodeURIComponent(selectedFile || "")}`, "_blank"), className: "text-muted-foreground text-xs h-6 px-2", "data-testid": "button-download-file", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Download, { className: "w-3 h-3 mr-1" }) })
+                ] })
+              ] })
+            ] }),
+            gexModifiedFiles.length > 0 && gexModifiedFiles.some((f) => !gexPatchAccepted.has(f)) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-red-950/30 border-b border-red-800/30 text-xs", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-red-300", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ScanSearch, { className: "w-3 h-3 inline mr-1" }),
+                gexModifiedFiles.filter((f) => !gexPatchAccepted.has(f)).length,
+                " pending patch",
+                gexModifiedFiles.filter((f) => !gexPatchAccepted.has(f)).length > 1 ? "es" : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("button", { onClick: acceptAllGex, className: "text-green-400 hover:text-green-300 font-medium", "data-testid": "button-accept-all-patches", children: "Accept All" }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("button", { onClick: clearGexPatches, className: "text-muted-foreground hover:text-foreground", "data-testid": "button-dismiss-patches", children: "Dismiss" })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex-1 overflow-hidden relative", children: isLoadingFile ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" }) }) : selectedFile && gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && gexSnapshots[selectedFile] !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "h-full flex flex-col", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-red-950/20 border-b border-red-800/20 text-xs", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 text-red-300", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileWarning, { className: "w-3.5 h-3.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "_Gex changes \u2014 review diff below" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                    Button,
+                    "button",
                     {
-                      variant: "ghost",
-                      size: "sm",
-                      className: "text-green-400 hover:text-green-300 text-xs h-6 px-2",
                       onClick: () => acceptGexFile(selectedFile),
-                      "data-testid": "button-accept-patch",
+                      className: "flex items-center gap-1 px-2 py-0.5 rounded bg-green-600/80 hover:bg-green-500 text-white text-xs font-medium transition-colors",
+                      "data-testid": "button-diff-accept",
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 mr-1" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
                         "Accept"
                       ]
                     }
                   ),
                   /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                    Button,
+                    "button",
                     {
-                      variant: "ghost",
-                      size: "sm",
-                      className: "text-red-400 hover:text-red-300 text-xs h-6 px-2",
                       onClick: () => revertGexFile(selectedFile),
-                      "data-testid": "button-revert-patch",
+                      className: "flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium transition-colors",
+                      "data-testid": "button-diff-revert",
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3 mr-1" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
                         "Revert"
                       ]
                     }
                   )
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Button, { variant: "ghost", size: "sm", onClick: saveFile, disabled: !hasUnsavedChanges || isSavingFile, className: "text-muted-foreground text-xs h-6 px-2", "data-testid": "button-save-file", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Save, { className: "w-3 h-3 mr-1" }),
-                  "Save"
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Button, { variant: "ghost", size: "sm", onClick: () => window.open(`/api/keystone/environments/${envId}/files/download?path=${encodeURIComponent(selectedFile || "")}`, "_blank"), className: "text-muted-foreground text-xs h-6 px-2", "data-testid": "button-download-file", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Download, { className: "w-3 h-3 mr-1" }) })
-              ] })
-            ] })
-          ] }),
-          gexModifiedFiles.length > 0 && gexModifiedFiles.some((f) => !gexPatchAccepted.has(f)) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-red-950/30 border-b border-red-800/30 text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-red-300", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ScanSearch, { className: "w-3 h-3 inline mr-1" }),
-              gexModifiedFiles.filter((f) => !gexPatchAccepted.has(f)).length,
-              " pending patch",
-              gexModifiedFiles.filter((f) => !gexPatchAccepted.has(f)).length > 1 ? "es" : ""
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("button", { onClick: acceptAllGex, className: "text-green-400 hover:text-green-300 font-medium", "data-testid": "button-accept-all-patches", children: "Accept All" }),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("button", { onClick: clearGexPatches, className: "text-muted-foreground hover:text-foreground", "data-testid": "button-dismiss-patches", children: "Dismiss" })
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex-1 overflow-hidden relative", children: isLoadingFile ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center justify-center h-full", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" }) }) : selectedFile && gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && gexSnapshots[selectedFile] !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "h-full flex flex-col", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-red-950/20 border-b border-red-800/20 text-xs", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 text-red-300", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileWarning, { className: "w-3.5 h-3.5" }),
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "_Gex changes \u2014 review diff below" })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                  "button",
-                  {
-                    onClick: () => acceptGexFile(selectedFile),
-                    className: "flex items-center gap-1 px-2 py-0.5 rounded bg-green-600/80 hover:bg-green-500 text-white text-xs font-medium transition-colors",
-                    "data-testid": "button-diff-accept",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
-                      "Accept"
-                    ]
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex-1 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                we,
+                {
+                  height: "100%",
+                  language: getLanguageFromPath(selectedFile || ""),
+                  original: gexSnapshots[selectedFile] || "",
+                  modified: fileContent,
+                  theme: "vs-dark",
+                  keepCurrentOriginalModel: true,
+                  keepCurrentModifiedModel: true,
+                  options: {
+                    readOnly: false,
+                    renderSideBySide: true,
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    lineNumbers: "on",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    originalEditable: false,
+                    padding: { top: 8, bottom: 8 }
+                  },
+                  onMount: (editor) => {
+                    if (diffContentDisposableRef.current) {
+                      diffContentDisposableRef.current.dispose();
+                      diffContentDisposableRef.current = null;
+                    }
+                    const modified = editor.getModifiedEditor();
+                    diffContentDisposableRef.current = modified.onDidChangeModelContent(() => {
+                      setFileContent(modified.getValue());
+                    });
                   }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                  "button",
-                  {
-                    onClick: () => revertGexFile(selectedFile),
-                    className: "flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium transition-colors",
-                    "data-testid": "button-diff-revert",
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
-                      "Revert"
-                    ]
-                  }
-                )
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex-1 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-              we,
+                },
+                `diff-${selectedFile}`
+              ) })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+              Ft,
               {
                 height: "100%",
                 language: getLanguageFromPath(selectedFile || ""),
-                original: gexSnapshots[selectedFile] || "",
-                modified: fileContent,
+                defaultValue: fileContent,
+                onChange: (v3) => setFileContentDebounced(v3 || ""),
                 theme: "vs-dark",
-                keepCurrentOriginalModel: true,
-                keepCurrentModifiedModel: true,
-                options: {
-                  readOnly: false,
-                  renderSideBySide: true,
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  originalEditable: false,
-                  padding: { top: 8, bottom: 8 }
-                },
+                options: { minimap: { enabled: true }, fontSize: 14, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", automaticLayout: true, padding: { top: 8, bottom: 8 } },
+                "data-testid": "editor-file-content",
                 onMount: (editor) => {
-                  if (diffContentDisposableRef.current) {
-                    diffContentDisposableRef.current.dispose();
-                    diffContentDisposableRef.current = null;
-                  }
-                  const modified = editor.getModifiedEditor();
-                  diffContentDisposableRef.current = modified.onDidChangeModelContent(() => {
-                    setFileContent(modified.getValue());
-                  });
+                  editorRef.current = editor;
                 }
               },
-              `diff-${selectedFile}`
+              `desktop-editor-${selectedFile}`
             ) })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-            Ft,
-            {
-              height: "100%",
-              language: getLanguageFromPath(selectedFile || ""),
-              defaultValue: fileContent,
-              onChange: (v3) => setFileContentDebounced(v3 || ""),
-              theme: "vs-dark",
-              options: { minimap: { enabled: true }, fontSize: 14, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", automaticLayout: true, padding: { top: 8, bottom: 8 } },
-              "data-testid": "editor-file-content",
-              onMount: (editor) => {
-                editorRef.current = editor;
-              }
-            },
-            `desktop-editor-${selectedFile}`
-          ) })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center justify-center h-full text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "text-center", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CodeXml, { className: "w-12 h-12 mx-auto mb-3 opacity-50" }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { children: "Select a file to edit" })
-        ] }) }) }) }),
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "flex items-center justify-center h-full text-muted-foreground", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "text-center", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CodeXml, { className: "w-12 h-12 mx-auto mb-3 opacity-50" }),
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { children: "Select a file to edit" })
+          ] }) }) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizableHandle, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 35, minSize: 20, children: renderBottomDock() })
+        ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizableHandle, {}),
         /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 35, minSize: 25, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "h-full min-h-0 flex flex-col qw-agent-rail min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Tabs2, { value: activeTab, onValueChange: setActiveTab, className: "flex flex-col h-full", children: [
           /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(TabsList2, { className: "qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full", children: [
@@ -111916,10 +112015,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(MessageSquare, { className: "w-3.5 h-3.5 mr-1.5" }),
               "Chat",
               messages2.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "qw-tab-count ml-1.5", children: messages2.length })
-            ] }),
-            isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(TabsTrigger2, { value: "terminal", className: "qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0", "data-testid": "tab-terminal", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Terminal, { className: "w-3.5 h-3.5 mr-1.5" }),
-              "Terminal"
             ] }),
             isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(TabsTrigger2, { value: "deploy", className: "qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0", "data-testid": "tab-deploy", children: [
               /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Rocket, { className: "w-3.5 h-3.5 mr-1.5" }),
@@ -111940,7 +112035,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "chat", className: "flex-1 flex flex-col m-0 overflow-hidden relative", children: renderChatPanel() }),
-          isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "terminal", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderTerminalTab() }),
           isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "deploy", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderDeployTab() }),
           isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "ledger", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderLedgerTab() }),
           /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "artifacts", className: "flex-1 flex flex-col m-0 overflow-hidden", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "p-4 space-y-3 overflow-y-auto flex-1", "data-testid": "panel-artifacts-ks", children: [
