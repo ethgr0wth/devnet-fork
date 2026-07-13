@@ -6,7 +6,7 @@ import {
   Trash2, Edit2, Save, X, Code2, MessageSquare,
   Settings, Play, RefreshCw, ChevronRight,
   FileCode, FileJson, FileText, Sparkles, Bot, User, Square,
-  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,
+  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,  // V2 EDIT: brand icons removed from lucide; GitBranch stands in
   Terminal, Rocket, ScrollText, Search, ChevronDown,
   Package, Server, Activity, Eye, Cpu, HardDrive,
   GitBranch, FolderGit, Zap, Shield, MoreHorizontal,
@@ -55,6 +55,7 @@ import Editor, { DiffEditor } from "@monaco-editor/react";
 import { apiFetch } from "@/lib/queryClient";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
+
 interface QuestsEnvironment {
   id: string;
   name: string;
@@ -66,12 +67,14 @@ interface QuestsEnvironment {
   created_at: string;
   updated_at: string;
 }
+
 interface FileNode {
   name: string;
   path: string;
   type: "file" | "directory";
   children?: FileNode[];
 }
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -83,6 +86,7 @@ interface ChatMessage {
   filesEdited?: string[];
   toolActive?: boolean;
 }
+
 interface LedgerEntry {
   ts: string;
   session_id: string;
@@ -91,11 +95,13 @@ interface LedgerEntry {
   request: Record<string, any>;
   result: Record<string, any>;
 }
+
 interface SearchHit {
   file: string;
   line: number;
   content: string;
 }
+
 const TOOL_COLORS: Record<string, string> = {
   clone_repo: "text-blue-400 bg-blue-500/10",
   checkout_ref: "text-blue-400 bg-blue-500/10",
@@ -123,6 +129,7 @@ const TOOL_COLORS: Record<string, string> = {
   destroy_session: "text-red-400 bg-red-500/10",
   session_reset: "text-slate-400 bg-slate-500/10",
 };
+
 const extractFilePaths = (content: string): string[] => {
   const paths: string[] = [];
   const seen = new Set<string>();
@@ -143,6 +150,7 @@ const extractFilePaths = (content: string): string[] => {
   }
   return paths;
 };
+
 const extractEditPaths = (content: string): string[] => {
   const paths: string[] = [];
   const seen = new Set<string>();
@@ -162,6 +170,7 @@ const extractEditPaths = (content: string): string[] => {
   }
   return paths;
 };
+
 interface ParsedBlock {
   type: "text" | "file" | "edit";
   content: string;
@@ -169,6 +178,7 @@ interface ParsedBlock {
   language?: string;
   editOps?: { action: string; range: string; code: string }[];
 }
+
 type DiffLine = { type: "same" | "add" | "del"; text: string };
 function computeDiff(oldText: string, newText: string): DiffLine[] {
   const oldLines = oldText.split("\n");
@@ -224,6 +234,7 @@ function computeDiff(oldText: string, newText: string): DiffLine[] {
   while (cy > 0) { cy--; edits.push({ type: "add", text: `+${newLines[cy]}` }); }
   return edits.reverse();
 }
+
 const getLanguageFromFilename = (filename: string): string => {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
@@ -235,6 +246,7 @@ const getLanguageFromFilename = (filename: string): string => {
   };
   return map[ext] || "text";
 };
+
 const markdownComponents = {
   code({ node, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || "");
@@ -249,17 +261,21 @@ const markdownComponents = {
     return <code className={`${className || ""} text-cyan-300 bg-white/10 px-1 rounded text-xs`} {...props}>{children}</code>;
   },
 };
+
 const parseContentForDisplay = (content: string): ParsedBlock[] => {
   const blocks: ParsedBlock[] = [];
   const filePattern = /<<<(FILE|CREATE)\s+([^>]+)>>>([\s\S]*?)<<<END>>>/g;
   const fpPattern = /```filepath:([^\n]+)\n([\s\S]*?)```/g;
   let lastIndex = 0;
+
   const allMatches: { index: number; length: number; block: ParsedBlock }[] = [];
+
   let match;
   while ((match = filePattern.exec(content)) !== null) {
     const filename = match[2].trim();
     allMatches.push({ index: match.index, length: match[0].length, block: { type: "file", content: match[3].trim(), filename, language: getLanguageFromFilename(filename) } });
   }
+
   const editStartPattern = /<<<EDIT\s+([^>]+)>>>/g;
   let editMatch;
   while ((editMatch = editStartPattern.exec(content)) !== null) {
@@ -299,6 +315,7 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
     }
     allMatches.push({ index: startIdx, length: fullLength, block: { type: "edit", content: "", filename, editOps: ops } });
   }
+
   while ((match = fpPattern.exec(content)) !== null) {
     const overlaps = allMatches.some(m => match!.index >= m.index && match!.index < m.index + m.length);
     if (!overlaps) {
@@ -306,7 +323,9 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
       allMatches.push({ index: match.index, length: match[0].length, block: { type: "file", content: match[2].trim(), filename, language: getLanguageFromFilename(filename) } });
     }
   }
+
   allMatches.sort((a, b) => a.index - b.index);
+
   for (const m of allMatches) {
     if (m.index > lastIndex) {
       const text = content.slice(lastIndex, m.index).trim();
@@ -315,12 +334,15 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
     blocks.push(m.block);
     lastIndex = m.index + m.length;
   }
+
   if (lastIndex < content.length) {
     const text = content.slice(lastIndex).trim();
     if (text) blocks.push({ type: "text", content: text });
   }
+
   return blocks.length > 0 ? blocks : [{ type: "text", content: content.trim() }];
 };
+
 const detectStreamingBlock = (content: string): { type: "file" | "edit" | "create"; filename: string; streamingCode: string } | null => {
   const openPattern = /<<<(FILE|EDIT|CREATE)\s+([^>]+)>>>/;
   const parts = content.split(/<<<END>>>/g);
@@ -332,7 +354,9 @@ const detectStreamingBlock = (content: string): { type: "file" | "edit" | "creat
   }
   return null;
 };
+
 const approxTokens = (text: string): number => Math.ceil(text.length / 3.5);
+
 const relativeTime = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
@@ -343,10 +367,12 @@ const relativeTime = (iso: string): string => {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 };
+
 export default function QuestsWorkspace() {
   const params = useParams<{ id: string }>();
   const envId = params.id;
   const [, setLocation] = useLocation();
+
   const [userPlan, setUserPlan] = useState<string>("free");
   const [environment, setEnvironment] = useState<QuestsEnvironment | null>(null);
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
@@ -401,6 +427,7 @@ export default function QuestsWorkspace() {
   const [ksArtifacts, setKsArtifacts] = useState<KSArtifact[]>([]);
   const [ksArtifactsLoading, setKsArtifactsLoading] = useState(false);
   const [ksImporting, setKsImporting] = useState<string | null>(null);
+
   const KS_LANG_EXT: Record<string, string> = {
     python: ".py", py: ".py", javascript: ".js", js: ".js",
     typescript: ".ts", ts: ".ts", tsx: ".tsx", jsx: ".jsx",
@@ -414,6 +441,7 @@ export default function QuestsWorkspace() {
     c: ".c", cpp: ".cpp", "c++": ".cpp",
     vue: ".vue", svelte: ".svelte",
   };
+
   const loadKsArtifacts = async () => {
     setKsArtifactsLoading(true);
     try {
@@ -425,7 +453,9 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Failed to load artifacts:", e); }
     finally { setKsArtifactsLoading(false); }
   };
+
   useEffect(() => { loadKsArtifacts(); }, []);
+
   useEffect(() => {
     return () => {
       if (diffContentDisposableRef.current) {
@@ -434,6 +464,7 @@ export default function QuestsWorkspace() {
       }
     };
   }, []);
+
   const importArtifactToEnv = async (artifact: KSArtifact) => {
     if (!envId) return;
     setKsImporting(artifact.id);
@@ -468,12 +499,15 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Failed to import artifact:", e); toast.error("Failed to import artifact"); }
     finally { setKsImporting(null); }
   };
+
   const [renamingKsArtifactId, setRenamingKsArtifactId] = useState<string | null>(null);
   const [renameKsArtifactValue, setRenameKsArtifactValue] = useState("");
+
   const startKsArtifactRename = (id: string, currentName: string) => {
     setRenamingKsArtifactId(id);
     setRenameKsArtifactValue(currentName);
   };
+
   const submitKsArtifactRename = async () => {
     if (!renamingKsArtifactId || !renameKsArtifactValue.trim()) { setRenamingKsArtifactId(null); return; }
     const old = ksArtifacts.find(a => a.id === renamingKsArtifactId);
@@ -491,12 +525,15 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error(e); toast.error("Rename failed"); }
     finally { setRenamingKsArtifactId(null); }
   };
+
   const [renamingFile, setRenamingFile] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
   const startRename = (filePath: string, currentName: string) => {
     setRenamingFile(filePath);
     setRenameValue(currentName);
   };
+
   const submitRename = async () => {
     if (!renamingFile || !renameValue.trim() || !envId) { setRenamingFile(null); return; }
     const dir = renamingFile.includes("/") ? renamingFile.substring(0, renamingFile.lastIndexOf("/") + 1) : "";
@@ -516,12 +553,15 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Rename failed:", e); toast.error("Rename failed"); }
     finally { setRenamingFile(null); }
   };
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
   const { models, provider: detectedProvider, providers, getModelsForProvider, isLoading: isLoadingModels } = useAvailableModels();
   const [selectedProvider, setSelectedProvider] = useState("");
+
   const [gexRunning, setGexRunning] = useState(false);
   const [gexSnapshots, setGexSnapshots] = useState<Record<string, string>>({});
   const [gexModifiedFiles, setGexModifiedFiles] = useState<string[]>([]);
@@ -533,6 +573,7 @@ export default function QuestsWorkspace() {
   const [collapsedDiffs, setCollapsedDiffs] = useState<Set<string>>(new Set());
   const diffContentListenerRef = useRef<{ dispose: () => void } | null>(null);
   const sessionMessageIds = useRef<Set<string>>(new Set());
+
   const hasPendingReview = useMemo(() => {
     const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
     if (!lastAssistant) return false;
@@ -555,30 +596,39 @@ export default function QuestsWorkspace() {
       return true;
     });
   }, [messages, dismissedBlocks, rejectedBlocks]);
+
   const [runtimeSessionId, setRuntimeSessionId] = useState<string | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+
   const PYTHON_EXAMPLE = `# AiOS Runtime — Python
 import sys, platform, datetime
+
 print(f"Python {sys.version}")
 print(f"Platform: {platform.system()} {platform.machine()}")
 print(f"Time: {datetime.datetime.now().isoformat()}")
+
 # Try it: import a library, run calculations, etc.
 nums = [x**2 for x in range(1, 11)]
 print(f"Squares 1-10: {nums}")
 print(f"Sum: {sum(nums)}")`;
+
   const NODE_EXAMPLE = `// AiOS Runtime — Node.js
 const os = require('os');
+
 console.log(\`Node \${process.version}\`);
 console.log(\`Platform: \${os.platform()} \${os.arch()}\`);
 console.log(\`Time: \${new Date().toISOString()}\`);
+
 // Try it: run logic, import modules, etc.
 const nums = Array.from({length: 10}, (_, i) => (i+1)**2);
 console.log(\`Squares 1-10: [\${nums}]\`);
 console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
+
   const [termCode, setTermCode] = useState(PYTHON_EXAMPLE);
   const [termLang, setTermLang] = useState<"python" | "node">("python");
   const [termCodeEdited, setTermCodeEdited] = useState(false);
+
   const handleLangChange = (newLang: "python" | "node") => {
     const oldDefault = termLang === "python" ? PYTHON_EXAMPLE : NODE_EXAMPLE;
     const isDefault = termCode.trim() === oldDefault.trim() || !termCodeEdited;
@@ -593,6 +643,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   const [pkgName, setPkgName] = useState("");
   const [pkgEco, setPkgEco] = useState<"python" | "node">("python");
   const [pkgInstalling, setPkgInstalling] = useState(false);
+
   const [deployRepoUrl, setDeployRepoUrl] = useState("");
   const [deployTargetDir, setDeployTargetDir] = useState("myapp");
   const [deployRef, setDeployRef] = useState("");
@@ -629,22 +680,27 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   const [exportDir, setExportDir] = useState("");
   const [exportResult, setExportResult] = useState<any>(null);
   const [exporting, setExporting] = useState(false);
+
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [ledgerAutoRefresh, setLedgerAutoRefresh] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState("all");
   const [ledgerExpanded, setLedgerExpanded] = useState<Set<number>>(new Set());
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [fileSearchResults, setFileSearchResults] = useState<SearchHit[]>([]);
   const [fileSearching, setFileSearching] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
+
   const [streamingContent, setStreamingContent] = useState("");
+
   useEffect(() => {
     if (providers.length > 0 && !selectedProvider) {
       const def = providers.find(p => p.is_default) || providers[0];
       setSelectedProvider(def.id);
     }
   }, [providers, selectedProvider]);
+
   useEffect(() => {
     if (selectedProvider) {
       const providerModels = getModelsForProvider(selectedProvider);
@@ -653,24 +709,24 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       }
     }
   }, [selectedProvider]);
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
   useEffect(() => {
     apiFetch("/api/auth/me").then(r => r.json()).then(data => {
       const u = data?.user || data;
-      if (u?.plan) setUserPlan(String(u.plan).toLowerCase());
-      const role = String(u?.role || u?.user_role || "").toLowerCase();
-      const adminRoles = ["admin", "manager", "super_admin", "superadmin", "owner", "root"];
-      if (adminRoles.includes(role) || u?.is_admin === true || u?.is_superuser === true) {
-        setUserPlan("enterprise");
-      }
+      if (u?.plan) setUserPlan(u.plan);
+      if (u?.role && ["manager", "super_admin"].includes(u.role)) setUserPlan("enterprise");
     }).catch(() => {});
   }, []);
-  const isEnterprise = ["enterprise", "pro", "admin", "business", "team"].includes(String(userPlan || "").toLowerCase());
+
+  const isEnterprise = userPlan === "enterprise" || userPlan === "pro";
+
   useEffect(() => {
     window.scrollTo(0, 0);
     if (envId) {
@@ -680,6 +736,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       initRuntimeSession();
     }
   }, [envId]);
+
   useEffect(() => {
     if (shouldAutoScroll) {
       const timer = setTimeout(() => {
@@ -688,6 +745,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return () => clearTimeout(timer);
     }
   }, [messages, shouldAutoScroll]);
+
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     if (ledgerAutoRefresh && activeTab === "ledger") {
@@ -695,19 +753,23 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     }
     return () => { if (interval) clearInterval(interval); };
   }, [ledgerAutoRefresh, activeTab, runtimeSessionId]);
+
   useEffect(() => {
     if (activeTab === "ledger") loadLedger();
   }, [activeTab]);
+
   const handleChatScroll = useCallback(() => {
     const container = chatContainerRef.current;
     if (!container) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     setShouldAutoScroll(scrollHeight - scrollTop - clientHeight < 100);
   }, []);
+
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setShouldAutoScroll(true);
   };
+
   const initRuntimeSession = async () => {
     setRuntimeLoading(true);
     setRuntimeError(null);
@@ -760,6 +822,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setRuntimeLoading(false);
     }
   };
+
   const loadEnvironment = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}`).then(r => r.json());
@@ -769,6 +832,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setLocation("/keystone");
     }
   };
+
   const scanDepFiles = (node: FileNode): { python: string[]; node: boolean } => {
     const result = { python: [] as string[], node: false };
     const scan = (n: FileNode) => {
@@ -781,6 +845,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     scan(node);
     return result;
   };
+
   const loadFileTree = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/files/tree`).then(r => r.json());
@@ -806,6 +871,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       console.error("Failed to load file tree:", error);
     }
   };
+
   const loadChatHistory = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/chat/history?limit=50`).then(r => r.json());
@@ -824,6 +890,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       console.error("Failed to load chat history:", error);
     }
   };
+
   const loadFile = async (path: string) => {
     if (selectedFile && selectedFile !== path) {
       setTabContents(prev => ({ ...prev, [selectedFile!]: { content: fileContent, original: originalContent } }));
@@ -852,6 +919,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsLoadingFile(false);
     }
   };
+
   const closeTab = (path: string) => {
     setOpenTabs(prev => {
       const next = prev.filter(t => t !== path);
@@ -873,6 +941,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     });
     setTabContents(prev => { const n = { ...prev }; delete n[path]; return n; });
   };
+
   const switchTab = (path: string) => {
     if (path === selectedFile) return;
     if (selectedFile) {
@@ -883,6 +952,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     setFileContent(cached?.content || "");
     setOriginalContent(cached?.original || "");
   };
+
   const saveFile = async () => {
     if (fileContentTimerRef.current) { clearTimeout(fileContentTimerRef.current); fileContentTimerRef.current = null; }
     const currentContent = fileContentRef.current || fileContent;
@@ -903,6 +973,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsSavingFile(false);
     }
   };
+
   const resetContext = async () => {
     setIsResettingContext(true);
     try {
@@ -929,6 +1000,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsResettingContext(false);
     }
   };
+
   const cloneGithubRepo = async () => {
     if (!githubUrl.trim()) return;
     setIsCloningRepo(true);
@@ -952,11 +1024,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsCloningRepo(false);
     }
   };
+
   const runGex = async (targetFile?: string) => {
     if (gexRunning || isSendingMessage) return;
     setGexRunning(true);
     setActiveTab("chat");
     if (isMobile) setMobileTab("chat");
+
     const unrevertedFiles = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f) && gexSnapshots[f] !== undefined);
     for (const fp of unrevertedFiles) {
       try {
@@ -967,13 +1041,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         });
       } catch {}
     }
+
     setGexSnapshots({});
     setGexModifiedFiles([]);
     setGexPatchAccepted(new Set());
+
     const scanTarget = targetFile || "the entire project";
     const gexPrompt = targetFile
       ? `Scan and surgically fix: ${targetFile}`
       : "Scan the entire project for bugs, issues, and improvements. Apply surgical fixes.";
+
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -982,11 +1059,14 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     };
     setMessages(prev => [...prev, userMessage]);
     setChatError(null);
+
     const assistantId = `gex-${Date.now()}`;
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "", timestamp: new Date().toISOString() }]);
+
     let collectedSnapshots: Record<string, string> = {};
     let allWritten: string[] = [];
     let allEdited: string[] = [];
+
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
@@ -1001,15 +1081,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         }),
         credentials: "include"
       });
+
       if (!response.ok) {
         setChatError(`Gex scan failed: ${response.status}`);
         setMessages(prev => prev.filter(m => m.id !== assistantId));
         setGexRunning(false);
         return;
       }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1028,6 +1111,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               allWritten = data.files_written || [];
               allEdited = data.files_edited || [];
               const totalModified = [...allWritten, ...allEdited];
+
               if (totalModified.length > 0) {
                 loadFileTree();
                 const fullSnapshots = { ...collectedSnapshots };
@@ -1036,6 +1120,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 }
                 setGexSnapshots(fullSnapshots);
                 setGexModifiedFiles(totalModified);
+
                 for (const fp of totalModified) {
                   try {
                     const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(fp)}`).then(r => r.json());
@@ -1051,6 +1136,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   setFileContent(r2.content || "");
                   setOriginalContent(r2.content || "");
                 }
+
                 toast(
                   <div className="flex flex-col gap-1" data-testid="gex-findings-toast">
                     <div className="flex items-center gap-2 font-semibold text-red-400">
@@ -1068,6 +1154,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               } else {
                 toast.info("_Gex scan complete — no changes needed.", { duration: 5000 });
               }
+
               if (data.gex_workspace_id) {
                 setMessages(prev => [...prev, {
                   id: `gex-ws-${Date.now()}`,
@@ -1089,6 +1176,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setGexRunning(false);
     }
   };
+
   const revertGexFile = async (filePath: string) => {
     const snapshot = gexSnapshots[filePath];
     if (snapshot === undefined) return;
@@ -1110,35 +1198,43 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Revert failed");
     }
   };
+
   const acceptGexFile = (filePath: string) => {
     setGexPatchAccepted(prev => new Set(prev).add(filePath));
     toast.success(`Accepted: ${filePath.split("/").pop()}`);
   };
+
   const acceptAllGex = () => {
     setGexPatchAccepted(new Set(gexModifiedFiles));
     toast.success("All patches accepted");
   };
+
   const clearGexPatches = () => {
     setGexSnapshots({});
     setGexModifiedFiles([]);
     setGexPatchAccepted(new Set());
   };
+
   const dismissBlock = (blockKey: string) => {
     setDismissedBlocks(prev => new Set(prev).add(blockKey));
   };
+
   const rejectBlock = async (blockKey: string, filePath: string, blockContent?: string) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
+
     let currentContent: string | null = null;
     try {
       const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(filePath)}`).then(r => r.json());
       currentContent = r.content ?? null;
     } catch {}
+
     if (blockContent !== undefined && currentContent !== null && currentContent !== blockContent) {
       setRejectedBlocks(prev => new Set(prev).add(blockKey));
       toast.info(`File was modified after this block — skipped revert for ${filePath.split("/").pop()}`);
       return;
     }
+
     const restoreTo = (snapshot === undefined || snapshot === null) ? "" : snapshot;
     try {
       await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
@@ -1158,15 +1254,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     setRejectedBlocks(prev => new Set(prev).add(blockKey));
     toast.success(`Reverted: ${filePath.split("/").pop()}`);
   };
+
   const parseLineRange = (range: string): { start: number; end: number } | null => {
     const m = range.match(/lines?\s+(\d+)(?:\s*-\s*(\d+))?/i);
     if (!m) return null;
     return { start: parseInt(m[1]), end: m[2] ? parseInt(m[2]) : parseInt(m[1]) };
   };
+
   const parseInsertLine = (range: string): number | null => {
     const m = range.match(/(?:after\s+)?line\s+(\d+)/i);
     return m ? parseInt(m[1]) : null;
   };
+
   const revertSingleOp = async (opKey: string, filePath: string, op: { action: string; range: string; code: string }) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
@@ -1175,6 +1274,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return;
     }
     const snapshotLines = snapshot.split("\n");
+
     let currentContent: string;
     try {
       const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(filePath)}`).then(r => r.json());
@@ -1184,8 +1284,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return;
     }
     const currentLines = currentContent.split("\n");
+
     let newLines = [...currentLines];
     const action = op.action.toUpperCase();
+
     if (action === "REPLACE") {
       const lr = parseLineRange(op.range);
       if (lr) {
@@ -1221,6 +1323,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         newLines.splice(bestIdx, 0, ...deletedLines);
       }
     }
+
     const newContent = newLines.join("\n");
     try {
       await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
@@ -1239,6 +1342,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Revert failed");
     }
   };
+
   const rejectAllEditOps = async (blockKey: string, filePath: string, editOps: Array<{ action: string; range: string; code: string }>) => {
     for (let i = editOps.length - 1; i >= 0; i--) {
       const opKey = `${blockKey}-op-${i}`;
@@ -1247,6 +1351,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     }
     setRejectedBlocks(prev => new Set(prev).add(blockKey));
   };
+
   const toggleDiff = (blockKey: string) => {
     setCollapsedDiffs(prev => {
       const n = new Set(prev);
@@ -1254,6 +1359,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return n;
     });
   };
+
   const rejectChatFile = async (filePath: string) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
@@ -1284,6 +1390,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Reject failed");
     }
   };
+
   const sendMessage = async () => {
     const currentInput = textareaRef.current?.value?.trim() || chatInput.trim();
     if (!currentInput || isSendingMessage) return;
@@ -1307,6 +1414,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       content: "",
       timestamp: new Date().toISOString()
     }]);
+
     try {
       setChatError(null);
       const abortCtrl = new AbortController();
@@ -1326,6 +1434,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         credentials: "include",
         signal: abortCtrl.signal
       });
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Request failed" }));
         const errorMessage = errorData.detail || "Failed to send message";
@@ -1333,9 +1442,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         toast.error(errorMessage);
         throw new Error(errorMessage);
       }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
@@ -1426,6 +1537,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     toast.success(`${parts.join(', ')} file${totalChanged > 1 ? 's' : ''}`);
                     loadFileTree();
                     const allChanged = [...finalFiles, ...finalEdits];
+
                     const mergedSnapshots: Record<string, string> = {};
                     for (const fp of allChanged) {
                       if (chatSnapshotsRef.current[fp] !== undefined) {
@@ -1436,6 +1548,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     }
                     setGexSnapshots(prev => ({ ...prev, ...mergedSnapshots }));
                     setGexModifiedFiles(prev => [...new Set([...prev, ...allChanged])]);
+
                     for (const fp of allChanged) {
                       try {
                         const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(fp)}`).then(r => r.json());
@@ -1491,12 +1604,14 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setStreamingContent("");
     }
   };
+
   const stopStream = () => {
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
       streamAbortRef.current = null;
     }
   };
+
   const runCode = async () => {
     if (!runtimeSessionId || termRunning) return;
     setTermRunning(true);
@@ -1515,6 +1630,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setTermRunning(false);
     }
   };
+
   const installPackage = async () => {
     if (!runtimeSessionId || !pkgName.trim() || pkgInstalling) return;
     setPkgInstalling(true);
@@ -1533,6 +1649,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setPkgInstalling(false);
     }
   };
+
   const deployCloneRepo = async () => {
     if (!runtimeSessionId || !deployRepoUrl.trim()) return;
     setDeployCloning(true);
@@ -1555,6 +1672,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployCloning(false);
     }
   };
+
   const deployCheckoutRef = async () => {
     if (!runtimeSessionId || !deployRef.trim()) return;
     setDeployCheckingOut(true);
@@ -1572,6 +1690,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployCheckingOut(false);
     }
   };
+
   const deployDetectStack = async () => {
     if (!runtimeSessionId) return;
     setDeployDetecting(true);
@@ -1588,6 +1707,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployDetecting(false);
     }
   };
+
   const syncWorkspaceToRuntime = async () => {
     if (!runtimeSessionId || !envId) return false;
     try {
@@ -1601,6 +1721,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return false;
     }
   };
+
   const deployInstallDeps = async (type: "node" | "python") => {
     if (!runtimeSessionId) return;
     type === "node" ? setDeployInstallingNode(true) : setDeployInstallingPython(true);
@@ -1629,6 +1750,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       type === "node" ? setDeployInstallingNode(false) : setDeployInstallingPython(false);
     }
   };
+
   const installSinglePackage = async () => {
     if (!runtimeSessionId || !singlePkg.trim()) return;
     setSinglePkgInstalling(true);
@@ -1649,6 +1771,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setSinglePkgInstalling(false);
     }
   };
+
   const deploySaveEnv = async () => {
     if (!runtimeSessionId) return;
     setEnvSaving(true);
@@ -1668,6 +1791,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setEnvSaving(false);
     }
   };
+
   const deployStartProcess = async () => {
     if (!runtimeSessionId || !procName.trim() || !procCommand.trim()) return;
     setProcStarting(true);
@@ -1706,6 +1830,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setProcStarting(false);
     }
   };
+
   const deployStopProcess = async (name: string) => {
     if (!runtimeSessionId) return;
     try {
@@ -1720,6 +1845,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Failed to stop process");
     }
   };
+
   const deployViewLogs = async (name: string) => {
     if (!runtimeSessionId) return;
     try {
@@ -1735,6 +1861,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Failed to get logs");
     }
   };
+
   const deployCheckPort = async () => {
     if (!runtimeSessionId || !healthPort) return;
     setHealthChecking(true);
@@ -1751,6 +1878,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setHealthChecking(false);
     }
   };
+
   const deployHttpCheck = async () => {
     if (!runtimeSessionId || !healthUrl.trim()) return;
     setHealthChecking(true);
@@ -1767,6 +1895,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setHealthChecking(false);
     }
   };
+
   const deployExport = async () => {
     if (!runtimeSessionId || !exportDir.trim()) return;
     setExporting(true);
@@ -1784,6 +1913,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setExporting(false);
     }
   };
+
   const loadLedger = async () => {
     setLedgerLoading(true);
     try {
@@ -1798,6 +1928,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setLedgerLoading(false);
     }
   };
+
   const searchInFiles = async () => {
     if (!runtimeSessionId || !fileSearchQuery.trim()) return;
     setFileSearching(true);
@@ -1816,6 +1947,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setFileSearching(false);
     }
   };
+
   const toggleFolder = (path: string) => {
     setExpandedFolders(prev => {
       const next = new Set(prev);
@@ -1827,6 +1959,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return next;
     });
   };
+
   const getFileIcon = (name: string) => {
     if (name.endsWith(".json")) return <FileJson className="w-4 h-4 text-yellow-400" />;
     if (name.endsWith(".ts") || name.endsWith(".tsx")) return <FileCode className="w-4 h-4 text-blue-400" />;
@@ -1836,6 +1969,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     if (name.endsWith(".css") || name.endsWith(".scss")) return <FileCode className="w-4 h-4 text-pink-400" />;
     return <File className="w-4 h-4 text-muted-foreground" />;
   };
+
   const getLanguageFromPath = (path: string): string => {
     const ext = path.split(".").pop()?.toLowerCase() || "";
     const langMap: Record<string, string> = {
@@ -1849,9 +1983,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     };
     return langMap[ext] || "text";
   };
+
   const renderFileTree = (node: FileNode, depth: number = 0) => {
     const isExpanded = expandedFolders.has(node.path);
     const isSelected = selectedFile === node.path;
+
     if (node.type === "directory") {
       return (
         <div key={node.path}>
@@ -1870,8 +2006,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       );
     }
+
     const isGexModified = gexModifiedFiles.includes(node.path);
     const isGexAccepted = gexPatchAccepted.has(node.path);
+
     if (renamingFile === node.path) {
       return (
         <div key={node.path} className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: `${depth * 12 + 8}px` }}>
@@ -1889,6 +2027,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       );
     }
+
     return (
       <div key={node.path} className="group relative flex items-center">
         <button
@@ -1948,8 +2087,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     );
   };
+
   const hasUnsavedChanges = fileContent !== originalContent;
+
   const cardClass = "bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm";
+
   if (!environment) {
     return (
       <>
@@ -1971,7 +2113,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             50% { transform: scale(1.15); opacity: 0.6; }
           }
         `}</style>
-        <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
+        <div className="h-full min-h-full bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-[40%] -left-[20%] w-[80%] h-[80%] rounded-full bg-indigo-500/[0.06] blur-[100px] animate-pulse" />
             <div className="absolute -bottom-[30%] -right-[20%] w-[70%] h-[70%] rounded-full bg-cyan-500/[0.05] blur-[100px] animate-pulse" style={{ animationDelay: "1s" }} />
@@ -2005,6 +2147,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </>
     );
   }
+
   const renderTerminalTab = () => (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -2037,6 +2180,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </Button>
         </div>
       </div>
+
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-[3] min-h-0">
           <Editor
@@ -2057,6 +2201,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             data-testid="editor-terminal-code"
           />
         </div>
+
         <div className="flex-[2] border-t border-border bg-black/30 overflow-auto">
           {termOutput ? (
             <div className="p-3 font-mono text-xs space-y-1" data-testid="terminal-output">
@@ -2087,6 +2232,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           )}
         </div>
       </div>
+
       <div className="p-3 border-t border-border flex items-center gap-2">
         <Package className="w-4 h-4 text-muted-foreground" />
         <Select value={pkgEco} onValueChange={(v) => setPkgEco(v as "python" | "node")}>
@@ -2119,6 +2265,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     </motion.div>
   );
+
   const renderSettingsContent = () => (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1" data-testid="tab-content-settings">
       <div>
@@ -2216,6 +2363,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     </motion.div>
   );
+
   const renderDeployTab = () => (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -2232,6 +2380,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </span>
         )}
       </div>
+
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-3">
           <Button size="sm" variant="outline" className="w-full h-8 text-xs" disabled={runtimeSyncing || !runtimeSessionId} onClick={async () => {
@@ -2264,6 +2413,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               </div>
             </div>
           </div>
+
           {/* Stack Detection — commented out for now
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
@@ -2286,6 +2436,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             )}
           </div>
           */}
+
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Package className="w-4 h-4 text-amber-400" />
@@ -2302,6 +2453,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   ))}
                 </div>
               )}
+
               <div className="space-y-2">
                 {detectedDepFiles.node && (
                   <Button size="sm" onClick={() => deployInstallDeps("node")} disabled={deployInstallingNode || !runtimeSessionId} className="h-7 text-xs bg-green-600 hover:bg-green-700 w-full" data-testid="button-install-node-deps">
@@ -2323,6 +2475,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   <span className="text-[10px] text-muted-foreground">Frozen lockfile</span>
                 </div>
               </div>
+
               <div className="border-t border-border/50 pt-2 space-y-1.5">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Add Package</span>
                 <div className="flex gap-1 items-center">
@@ -2348,12 +2501,14 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </Button>
                 </div>
               </div>
+
               <p className="text-[10px] text-muted-foreground">Node → local <code className="text-emerald-400/70">node_modules/</code> · Python → local <code className="text-blue-400/70">.venv/</code></p>
             </div>
             {deployDepsOutput && (
               <pre className="text-[10px] font-mono bg-black/30 rounded p-2 mt-2 max-h-32 overflow-auto text-muted-foreground" data-testid="deps-output">{deployDepsOutput.slice(-2000)}</pre>
             )}
           </div>
+
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="w-4 h-4 text-emerald-400" />
@@ -2380,6 +2535,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               </div>
             </div>
           </div>
+
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Server className="w-4 h-4 text-indigo-400" />
@@ -2433,6 +2589,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               )}
             </div>
           </div>
+
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-cyan-400" />
@@ -2461,6 +2618,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               )}
             </div>
           </div>
+
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <HardDrive className="w-4 h-4 text-amber-400" />
@@ -2483,11 +2641,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </ScrollArea>
     </motion.div>
   );
+
   const renderLedgerTab = () => {
     const filteredEntries = ledgerFilter === "all"
       ? ledgerEntries
       : ledgerEntries.filter(e => e.tool === ledgerFilter);
     const toolNames = [...new Set(ledgerEntries.map(e => e.tool))].sort();
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -2518,6 +2678,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Button>
           </div>
         </div>
+
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
             {filteredEntries.length === 0 ? (
@@ -2575,14 +2736,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </motion.div>
     );
   };
+
   const renderChatPanel = (compact: boolean = false) => (
-    <div className="keystone-chat-panel flex flex-col h-full min-h-0 overflow-hidden">
+    // Anchored to the nearest positioned ancestor (both call sites are
+    // `relative` with a definite height) so the chat column can never
+    // inherit a broken percentage chain — it always fills its tab exactly.
+    <div className="absolute inset-0 flex flex-col overflow-hidden">
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
-        className="keystone-chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
       >
-        <div className={`space-y-${compact ? "3" : "4"} p-${compact ? "3" : "4"} min-w-0 max-w-full overflow-hidden`}>
+        <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
@@ -2922,6 +3087,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <div ref={chatEndRef} />
         </div>
       </div>
+
       {!shouldAutoScroll && messages.length > 3 && (
         <div className="absolute bottom-28 right-6 z-10">
           <Button
@@ -2935,7 +3101,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </Button>
         </div>
       )}
-      <div className={`keystone-composer p-${compact ? "3" : "4"} border-t border-border space-y-2`}>
+
+      <div className={`${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3076,9 +3243,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     </div>
   );
+
   if (isMobile) {
     return (
-      <div className="keystone-2027 bg-background flex flex-col" style={{ height: "100dvh" }}>
+      <div className="bg-background flex flex-col h-full min-h-0">
         <header className="glass-header flex-shrink-0 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
           <div className="flex items-center justify-between px-3 py-2 relative z-10">
@@ -3129,6 +3297,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </motion.div>
           )}
         </header>
+
         <div className="flex-1 overflow-hidden">
           <AnimatePresence mode="wait">
             {mobileTab === "files" && (
@@ -3270,6 +3439,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             )}
           </AnimatePresence>
         </div>
+
         <nav className="border-t border-border bg-background/80 backdrop-blur-sm flex-shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             {[
@@ -3293,6 +3463,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             ))}
           </div>
         </nav>
+
         <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
           <DialogContent className="bg-background border-border">
             <DialogHeader>
@@ -3314,6 +3485,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DialogContent>
         </Dialog>
+
         <Drawer open={mobileDrawer === "deploy"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3324,6 +3496,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
+
         <Drawer open={mobileDrawer === "ledger"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3334,6 +3507,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
+
         <Drawer open={mobileDrawer === "artifacts"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3370,6 +3544,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
+
         <Drawer open={mobileDrawer === "settings"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3383,8 +3558,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     );
   }
+
   return (
-    <div className="keystone-2027 h-screen w-screen max-w-[100vw] bg-background flex flex-col">
+    <div className="h-full w-full bg-background flex flex-col min-h-0">
       <header className="glass-header flex-shrink-0 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
         <div className="flex items-center justify-between px-4 py-2 relative z-10">
@@ -3397,6 +3573,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               <h1 className="text-lg font-semibold ace-text-shimmer" data-testid="text-env-name">{environment.name}</h1>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             {runtimeSessionId && (
               <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded flex items-center gap-1.5" data-testid="badge-runtime-session">
@@ -3442,10 +3619,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
         </div>
       </header>
+
       <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal" className="keystone-panels min-h-0">
+        <ResizablePanelGroup direction="horizontal">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-            <div className="keystone-files-panel h-full flex flex-col bg-background/50 border-r border-border">
+            <div className="h-full flex flex-col bg-background/50 border-r border-border">
               <div className="p-3 border-b border-border flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">Files</span>
                 <div className="flex items-center gap-1">
@@ -3484,6 +3662,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </Button>
                 </div>
               </div>
+
               {showFileSearch && (
                 <div className="p-2 border-b border-border">
                   <div className="flex gap-1">
@@ -3519,6 +3698,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   )}
                 </div>
               )}
+
               <ScrollArea className="flex-1">
                 <div className="p-2">
                   {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
@@ -3526,6 +3706,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   )}
                 </div>
               </ScrollArea>
+
               <div className="p-2 border-t border-border">
                 <button
                   onClick={() => runGex(selectedFile || undefined)}
@@ -3552,9 +3733,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               </div>
             </div>
           </ResizablePanel>
+
           <ResizableHandle />
+
           <ResizablePanel defaultSize={45}>
-            <div className="keystone-editor-panel h-full flex flex-col bg-background">
+            <div className="h-full flex flex-col bg-background">
               {openTabs.length > 0 ? (
                 <>
                   <div className="border-b border-border bg-background/80 flex flex-col">
@@ -3769,11 +3952,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               )}
             </div>
           </ResizablePanel>
+
           <ResizableHandle />
+
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="keystone-agent-rail h-full min-h-0 flex flex-col bg-background/50 min-w-0">
+            <div className="h-full min-h-0 flex flex-col bg-background/50 min-w-0">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
-                <TabsList className="keystone-agent-tabs border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
+                <TabsList className="border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
                   <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
                     <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
                   </TabsTrigger>
@@ -3800,24 +3985,29 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     <Settings className="w-3.5 h-3.5 mr-1" />Settings
                   </TabsTrigger>
                 </TabsList>
-                  <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
+
+                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative">
                     {renderChatPanel()}
                   </TabsContent>
+
                   {isEnterprise && (
                     <TabsContent value="terminal" className="flex-1 flex flex-col m-0 overflow-hidden">
                       {renderTerminalTab()}
                     </TabsContent>
                   )}
+
                   {isEnterprise && (
                     <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">
                       {renderDeployTab()}
                     </TabsContent>
                   )}
+
                   {isEnterprise && (
                     <TabsContent value="ledger" className="flex-1 flex flex-col m-0 overflow-hidden">
                       {renderLedgerTab()}
                     </TabsContent>
                   )}
+
                   <TabsContent value="artifacts" className="flex-1 flex flex-col m-0 overflow-hidden">
                     <div className="p-4 space-y-3 overflow-y-auto flex-1" data-testid="panel-artifacts-ks">
                       <div className="flex items-center justify-between mb-2">
@@ -3879,6 +4069,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                       )}
                     </div>
                   </TabsContent>
+
                   <TabsContent value="settings" className="flex-1 flex flex-col m-0 overflow-hidden">
                     {renderSettingsContent()}
                   </TabsContent>
