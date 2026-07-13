@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -372,6 +373,19 @@ export default function QuestsWorkspace() {
   const params = useParams<{ id: string }>();
   const envId = params.id;
   const [, setLocation] = useLocation();
+
+  // Portal the workspace into a fixed full-viewport div so it owns a definite
+  // 100vh height box. Without this, the AppWindow scroll-container parent breaks
+  // every percentage-height chain (h-full / height:100%) and collapses all panels.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.createElement("div");
+    el.id = "keystone-workspace-portal";
+    el.style.cssText = "position:fixed;inset:0;height:100vh;width:100vw;z-index:50;overflow:hidden;";
+    document.body.appendChild(el);
+    setPortalTarget(el);
+    return () => { document.body.removeChild(el); };
+  }, []);
 
   const [userPlan, setUserPlan] = useState<string>("free");
   const [environment, setEnvironment] = useState<QuestsEnvironment | null>(null);
@@ -2097,7 +2111,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   const cardClass = "bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm";
 
   if (!environment) {
-    return (
+    if (!portalTarget) return null;
+    return createPortal(
       <>
         <style>{`
           @keyframes ksShimmer {
@@ -2147,7 +2162,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             <span className="text-[11px] text-white/30">Loading environment...</span>
           </div>
         </div>
-      </>
+      </>,
+      portalTarget
     );
   }
 
@@ -3286,8 +3302,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
   if (isMobile) {
     const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
-    return (
-      <div className="qw-shell flex flex-col h-full min-h-0">
+    if (!portalTarget) return null;
+    return createPortal(
+      <div className="qw-shell flex flex-col" style={{ height: "100vh", width: "100vw", minHeight: 0 }}>
         <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 relative z-10 gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -3594,14 +3611,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
-      </div>
+      </div>,
+      portalTarget
     );
   }
 
   const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
 
-  return (
-    <div className="h-full w-full qw-shell flex flex-col min-h-0">
+  if (!portalTarget) return null;
+  return createPortal(
+    <div className="qw-shell flex flex-col" style={{ height: "100vh", width: "100vw", minHeight: 0 }}>
       <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2.5 relative z-10 gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -4127,6 +4146,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </span>
         <span>AiAssist Secure · KeyStone</span>
       </footer>
-    </div>
+    </div>,
+    portalTarget
   );
 }
