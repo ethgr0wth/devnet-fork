@@ -144,6 +144,12 @@ export default function KeystoneLiteWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  // rollback: auto-apply stays on, but every applied change keeps a snapshot
+  // (path → pre-change content; created=true means revert deletes the file)
+  const [agentChanges, setAgentChanges] = useState<
+    Record<string, { snap: string; created: boolean }>
+  >({});
+  const snapshotsRef = useRef<Record<string, string>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
@@ -391,6 +397,71 @@ export default function KeystoneLiteWorkspace() {
     [envId, loadFileTree]
   );
 
+  // ── rollback (undo auto-applied agent changes) ─────────────────────────────
+
+  const revertFile = useCallback(
+    async (fp: string, entry?: { snap: string; created: boolean }) => {
+      const change = entry ?? agentChanges[fp];
+      if (!change) return;
+      try {
+        if (change.created) {
+          // file didn't exist before the agent — revert = delete it
+          await apiFetch(
+            `/api/keystone/environments/${envId}/files/delete?path=${encodeURIComponent(fp)}`,
+            { method: "DELETE" }
+          );
+          setOpenTabs((prev) => prev.filter((p) => p !== fp));
+          setActivePath((prev) => (prev === fp ? null : prev));
+          setTabContents((prev) => {
+            const { [fp]: _drop, ...rest } = prev;
+            return rest;
+          });
+        } else {
+          // restore the pre-change snapshot
+          await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: fp, content: change.snap }),
+          });
+          setTabContents((prev) =>
+            prev[fp] !== undefined
+              ? {
+                  ...prev,
+                  [fp]: { content: change.snap, original: change.snap },
+                }
+              : prev
+          );
+        }
+        delete snapshotsRef.current[fp];
+        setAgentChanges((prev) => {
+          const { [fp]: _drop, ...rest } = prev;
+          return rest;
+        });
+        loadFileTree();
+        toast.success(
+          change.created
+            ? `Removed ${baseName(fp)}`
+            : `Reverted ${baseName(fp)}`
+        );
+      } catch {
+        toast.error(`Could not revert ${baseName(fp)}`);
+      }
+    },
+    [agentChanges, envId, loadFileTree]
+  );
+
+  const revertAll = async () => {
+    for (const [fp, entry] of Object.entries(agentChanges)) {
+      await revertFile(fp, entry);
+    }
+  };
+
+  const dismissChanges = () => {
+    snapshotsRef.current = {};
+    setAgentChanges({});
+    toast.info("Changes kept — undo history cleared");
+  };
+
   // ── chat ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -428,6 +499,7 @@ export default function KeystoneLiteWorkspace() {
 
     let fullContent = "";
     const touched = new Set<string>();
+    const writtenSet = new Set<string>();
 
     try {
       const abortCtrl = new AbortController();
@@ -509,13 +581,24 @@ export default function KeystoneLiteWorkspace() {
             case "file_edited":
               if (data.path) {
                 touched.add(data.path);
+                if (data.type === "file_written") writtenSet.add(data.path);
                 patchDraft((m) => ({ ...m, filesTouched: [...touched] }));
               }
               break;
             case "files_written":
             case "files_edited":
-              for (const f of data.files || []) touched.add(f);
+              for (const f of data.files || []) {
+                touched.add(f);
+                if (data.type === "files_written") writtenSet.add(f);
+              }
               patchDraft((m) => ({ ...m, filesTouched: [...touched] }));
+              break;
+            case "snapshots":
+              // pre-change contents — first snapshot wins (the true original)
+              for (const [p, c] of Object.entries(data.snapshots || {})) {
+                if (snapshotsRef.current[p] === undefined)
+                  snapshotsRef.current[p] = String(c ?? "");
+              }
               break;
             case "file_error":
               toast.error(`Write failed: ${data.path} — ${data.error}`);
@@ -535,9 +618,23 @@ export default function KeystoneLiteWorkspace() {
               ]);
               break;
             case "done": {
-              for (const f of data.files_written || []) touched.add(f);
+              for (const f of data.files_written || []) {
+                touched.add(f);
+                writtenSet.add(f);
+              }
               for (const f of data.files_edited || []) touched.add(f);
               const finalTouched = [...touched];
+              // remember how to undo each change (auto-apply stays on)
+              setAgentChanges((prev) => {
+                const next = { ...prev };
+                for (const f of finalTouched) {
+                  if (next[f] === undefined) {
+                    const snap = snapshotsRef.current[f] ?? "";
+                    next[f] = { snap, created: writtenSet.has(f) && !snap };
+                  }
+                }
+                return next;
+              });
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === draftId
@@ -1240,6 +1337,67 @@ export default function KeystoneLiteWorkspace() {
                 <div ref={chatEndRef} />
               </div>
 
+              {/* applied-changes strip: auto-apply stays on, this is the undo */}
+              {Object.keys(agentChanges).length > 0 && (
+                <div
+                  className="shrink-0 border-t border-white/5 bg-white/[0.02] px-2.5 py-1.5"
+                  data-testid="ksl-changes-strip"
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                      Applied changes ({Object.keys(agentChanges).length})
+                    </span>
+                    <button
+                      onClick={revertAll}
+                      className="ml-auto flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20"
+                      data-testid="ksl-revert-all"
+                    >
+                      <RotateCcw className="h-2.5 w-2.5" /> Revert all
+                    </button>
+                    <button
+                      onClick={dismissChanges}
+                      className="rounded p-0.5 text-zinc-600 hover:bg-white/5 hover:text-zinc-300"
+                      title="Keep changes and clear undo history"
+                      data-testid="ksl-dismiss-changes"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
+                    {Object.entries(agentChanges).map(([fp, ch]) => (
+                      <span
+                        key={fp}
+                        className="flex items-center gap-1 rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-zinc-300"
+                      >
+                        <button
+                          onClick={() => openFile(fp)}
+                          className="hover:text-cyan-300"
+                          title={fp}
+                          data-testid={`ksl-change-open-${fp}`}
+                        >
+                          {baseName(fp)}
+                        </button>
+                        {ch.created && (
+                          <span className="text-emerald-400/70">new</span>
+                        )}
+                        <button
+                          onClick={() => revertFile(fp)}
+                          title={
+                            ch.created
+                              ? "Undo create (deletes file)"
+                              : "Revert to previous content"
+                          }
+                          className="text-zinc-500 hover:text-amber-300"
+                          data-testid={`ksl-revert-${fp}`}
+                        >
+                          <RotateCcw className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {chatError && (
                 <div className="shrink-0 border-t border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-[11px] text-red-400" data-testid="ksl-chat-error">
                   {chatError}
@@ -1286,7 +1444,7 @@ export default function KeystoneLiteWorkspace() {
                   )}
                 </div>
                 <div className="mt-1 px-1 text-[9.5px] text-zinc-700">
-                  Enter to send · Shift+Enter for newline · changes auto-apply
+                  Enter to send · Shift+Enter for newline · auto-apply on, revert anytime
                 </div>
               </div>
             </div>

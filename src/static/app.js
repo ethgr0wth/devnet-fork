@@ -112142,6 +112142,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     const [chatInput, setChatInput] = (0, import_react71.useState)("");
     const [sending, setSending] = (0, import_react71.useState)(false);
     const [chatError, setChatError] = (0, import_react71.useState)(null);
+    const [agentChanges, setAgentChanges] = (0, import_react71.useState)({});
+    const snapshotsRef = (0, import_react71.useRef)({});
     const streamAbortRef = (0, import_react71.useRef)(null);
     const chatEndRef = (0, import_react71.useRef)(null);
     const autoScrollRef = (0, import_react71.useRef)(true);
@@ -112358,6 +112360,60 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       },
       [envId, loadFileTree]
     );
+    const revertFile = (0, import_react71.useCallback)(
+      async (fp, entry) => {
+        const change = entry ?? agentChanges[fp];
+        if (!change) return;
+        try {
+          if (change.created) {
+            await apiFetch(
+              `/api/keystone/environments/${envId}/files/delete?path=${encodeURIComponent(fp)}`,
+              { method: "DELETE" }
+            );
+            setOpenTabs((prev) => prev.filter((p) => p !== fp));
+            setActivePath((prev) => prev === fp ? null : prev);
+            setTabContents((prev) => {
+              const { [fp]: _drop, ...rest2 } = prev;
+              return rest2;
+            });
+          } else {
+            await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: fp, content: change.snap })
+            });
+            setTabContents(
+              (prev) => prev[fp] !== void 0 ? {
+                ...prev,
+                [fp]: { content: change.snap, original: change.snap }
+              } : prev
+            );
+          }
+          delete snapshotsRef.current[fp];
+          setAgentChanges((prev) => {
+            const { [fp]: _drop, ...rest2 } = prev;
+            return rest2;
+          });
+          loadFileTree();
+          toast.success(
+            change.created ? `Removed ${baseName(fp)}` : `Reverted ${baseName(fp)}`
+          );
+        } catch {
+          toast.error(`Could not revert ${baseName(fp)}`);
+        }
+      },
+      [agentChanges, envId, loadFileTree]
+    );
+    const revertAll = async () => {
+      for (const [fp, entry] of Object.entries(agentChanges)) {
+        await revertFile(fp, entry);
+      }
+    };
+    const dismissChanges = () => {
+      snapshotsRef.current = {};
+      setAgentChanges({});
+      toast.info("Changes kept \u2014 undo history cleared");
+    };
     (0, import_react71.useEffect)(() => {
       if (autoScrollRef.current)
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112388,6 +112444,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setSending(true);
       let fullContent = "";
       const touched = /* @__PURE__ */ new Set();
+      const writtenSet = /* @__PURE__ */ new Set();
       try {
         const abortCtrl = new AbortController();
         streamAbortRef.current = abortCtrl;
@@ -112453,13 +112510,23 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               case "file_edited":
                 if (data.path) {
                   touched.add(data.path);
+                  if (data.type === "file_written") writtenSet.add(data.path);
                   patchDraft((m) => ({ ...m, filesTouched: [...touched] }));
                 }
                 break;
               case "files_written":
               case "files_edited":
-                for (const f of data.files || []) touched.add(f);
+                for (const f of data.files || []) {
+                  touched.add(f);
+                  if (data.type === "files_written") writtenSet.add(f);
+                }
                 patchDraft((m) => ({ ...m, filesTouched: [...touched] }));
+                break;
+              case "snapshots":
+                for (const [p, c2] of Object.entries(data.snapshots || {})) {
+                  if (snapshotsRef.current[p] === void 0)
+                    snapshotsRef.current[p] = String(c2 ?? "");
+                }
                 break;
               case "file_error":
                 toast.error(`Write failed: ${data.path} \u2014 ${data.error}`);
@@ -112479,9 +112546,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 ]);
                 break;
               case "done": {
-                for (const f of data.files_written || []) touched.add(f);
+                for (const f of data.files_written || []) {
+                  touched.add(f);
+                  writtenSet.add(f);
+                }
                 for (const f of data.files_edited || []) touched.add(f);
                 const finalTouched = [...touched];
+                setAgentChanges((prev) => {
+                  const next = { ...prev };
+                  for (const f of finalTouched) {
+                    if (next[f] === void 0) {
+                      const snap = snapshotsRef.current[f] ?? "";
+                      next[f] = { snap, created: writtenSet.has(f) && !snap };
+                    }
+                  }
+                  return next;
+                });
                 setMessages(
                   (prev) => prev.map(
                     (m) => m.id === draftId ? {
@@ -113014,6 +113094,74 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               ]
             }
           ),
+          Object.keys(agentChanges).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(
+            "div",
+            {
+              className: "shrink-0 border-t border-white/5 bg-white/[0.02] px-2.5 py-1.5",
+              "data-testid": "ksl-changes-strip",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "mb-1 flex items-center gap-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("span", { className: "text-[10px] font-semibold uppercase tracking-widest text-zinc-500", children: [
+                    "Applied changes (",
+                    Object.keys(agentChanges).length,
+                    ")"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(
+                    "button",
+                    {
+                      onClick: revertAll,
+                      className: "ml-auto flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20",
+                      "data-testid": "ksl-revert-all",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(RotateCcw, { className: "h-2.5 w-2.5" }),
+                        " Revert all"
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                    "button",
+                    {
+                      onClick: dismissChanges,
+                      className: "rounded p-0.5 text-zinc-600 hover:bg-white/5 hover:text-zinc-300",
+                      title: "Keep changes and clear undo history",
+                      "data-testid": "ksl-dismiss-changes",
+                      children: /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(X, { className: "h-3 w-3" })
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "flex max-h-20 flex-wrap gap-1 overflow-y-auto", children: Object.entries(agentChanges).map(([fp, ch]) => /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(
+                  "span",
+                  {
+                    className: "flex items-center gap-1 rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-zinc-300",
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                        "button",
+                        {
+                          onClick: () => openFile(fp),
+                          className: "hover:text-cyan-300",
+                          title: fp,
+                          "data-testid": `ksl-change-open-${fp}`,
+                          children: baseName(fp)
+                        }
+                      ),
+                      ch.created && /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-emerald-400/70", children: "new" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                        "button",
+                        {
+                          onClick: () => revertFile(fp),
+                          title: ch.created ? "Undo create (deletes file)" : "Revert to previous content",
+                          className: "text-zinc-500 hover:text-amber-300",
+                          "data-testid": `ksl-revert-${fp}`,
+                          children: /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(RotateCcw, { className: "h-2.5 w-2.5" })
+                        }
+                      )
+                    ]
+                  },
+                  fp
+                )) })
+              ]
+            }
+          ),
           chatError && /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "shrink-0 border-t border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-[11px] text-red-400", "data-testid": "ksl-chat-error", children: chatError }),
           /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "shrink-0 border-t border-white/5 p-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "flex items-end gap-1.5 rounded-md border border-white/10 bg-white/[0.03] p-1.5 focus-within:border-cyan-500/40", children: [
@@ -113056,7 +113204,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 }
               )
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "mt-1 px-1 text-[9.5px] text-zinc-700", children: "Enter to send \xB7 Shift+Enter for newline \xB7 changes auto-apply" })
+            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "mt-1 px-1 text-[9.5px] text-zinc-700", children: "Enter to send \xB7 Shift+Enter for newline \xB7 auto-apply on, revert anytime" })
           ] })
         ] }) })
       ] }) }),
