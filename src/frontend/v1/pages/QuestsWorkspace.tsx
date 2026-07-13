@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { createPortal } from "react-dom";
 import { useParams, Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -7,7 +6,7 @@ import {
   Trash2, Edit2, Save, X, Code2, MessageSquare,
   Settings, Play, RefreshCw, ChevronRight,
   FileCode, FileJson, FileText, Sparkles, Bot, User, Square,
-  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,  // V2 EDIT: brand icons removed from lucide; GitBranch stands in
+  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,
   Terminal, Rocket, ScrollText, Search, ChevronDown,
   Package, Server, Activity, Eye, Cpu, HardDrive,
   GitBranch, FolderGit, Zap, Shield, MoreHorizontal,
@@ -56,7 +55,6 @@ import Editor, { DiffEditor } from "@monaco-editor/react";
 import { apiFetch } from "@/lib/queryClient";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
-
 interface QuestsEnvironment {
   id: string;
   name: string;
@@ -68,14 +66,12 @@ interface QuestsEnvironment {
   created_at: string;
   updated_at: string;
 }
-
 interface FileNode {
   name: string;
   path: string;
   type: "file" | "directory";
   children?: FileNode[];
 }
-
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -87,7 +83,6 @@ interface ChatMessage {
   filesEdited?: string[];
   toolActive?: boolean;
 }
-
 interface LedgerEntry {
   ts: string;
   session_id: string;
@@ -96,13 +91,11 @@ interface LedgerEntry {
   request: Record<string, any>;
   result: Record<string, any>;
 }
-
 interface SearchHit {
   file: string;
   line: number;
   content: string;
 }
-
 const TOOL_COLORS: Record<string, string> = {
   clone_repo: "text-blue-400 bg-blue-500/10",
   checkout_ref: "text-blue-400 bg-blue-500/10",
@@ -130,7 +123,6 @@ const TOOL_COLORS: Record<string, string> = {
   destroy_session: "text-red-400 bg-red-500/10",
   session_reset: "text-slate-400 bg-slate-500/10",
 };
-
 const extractFilePaths = (content: string): string[] => {
   const paths: string[] = [];
   const seen = new Set<string>();
@@ -151,7 +143,6 @@ const extractFilePaths = (content: string): string[] => {
   }
   return paths;
 };
-
 const extractEditPaths = (content: string): string[] => {
   const paths: string[] = [];
   const seen = new Set<string>();
@@ -171,7 +162,6 @@ const extractEditPaths = (content: string): string[] => {
   }
   return paths;
 };
-
 interface ParsedBlock {
   type: "text" | "file" | "edit";
   content: string;
@@ -179,7 +169,6 @@ interface ParsedBlock {
   language?: string;
   editOps?: { action: string; range: string; code: string }[];
 }
-
 type DiffLine = { type: "same" | "add" | "del"; text: string };
 function computeDiff(oldText: string, newText: string): DiffLine[] {
   const oldLines = oldText.split("\n");
@@ -235,7 +224,6 @@ function computeDiff(oldText: string, newText: string): DiffLine[] {
   while (cy > 0) { cy--; edits.push({ type: "add", text: `+${newLines[cy]}` }); }
   return edits.reverse();
 }
-
 const getLanguageFromFilename = (filename: string): string => {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
@@ -247,7 +235,6 @@ const getLanguageFromFilename = (filename: string): string => {
   };
   return map[ext] || "text";
 };
-
 const markdownComponents = {
   code({ node, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || "");
@@ -262,21 +249,17 @@ const markdownComponents = {
     return <code className={`${className || ""} text-cyan-300 bg-white/10 px-1 rounded text-xs`} {...props}>{children}</code>;
   },
 };
-
 const parseContentForDisplay = (content: string): ParsedBlock[] => {
   const blocks: ParsedBlock[] = [];
   const filePattern = /<<<(FILE|CREATE)\s+([^>]+)>>>([\s\S]*?)<<<END>>>/g;
   const fpPattern = /```filepath:([^\n]+)\n([\s\S]*?)```/g;
   let lastIndex = 0;
-
   const allMatches: { index: number; length: number; block: ParsedBlock }[] = [];
-
   let match;
   while ((match = filePattern.exec(content)) !== null) {
     const filename = match[2].trim();
     allMatches.push({ index: match.index, length: match[0].length, block: { type: "file", content: match[3].trim(), filename, language: getLanguageFromFilename(filename) } });
   }
-
   const editStartPattern = /<<<EDIT\s+([^>]+)>>>/g;
   let editMatch;
   while ((editMatch = editStartPattern.exec(content)) !== null) {
@@ -316,7 +299,6 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
     }
     allMatches.push({ index: startIdx, length: fullLength, block: { type: "edit", content: "", filename, editOps: ops } });
   }
-
   while ((match = fpPattern.exec(content)) !== null) {
     const overlaps = allMatches.some(m => match!.index >= m.index && match!.index < m.index + m.length);
     if (!overlaps) {
@@ -324,9 +306,7 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
       allMatches.push({ index: match.index, length: match[0].length, block: { type: "file", content: match[2].trim(), filename, language: getLanguageFromFilename(filename) } });
     }
   }
-
   allMatches.sort((a, b) => a.index - b.index);
-
   for (const m of allMatches) {
     if (m.index > lastIndex) {
       const text = content.slice(lastIndex, m.index).trim();
@@ -335,15 +315,12 @@ const parseContentForDisplay = (content: string): ParsedBlock[] => {
     blocks.push(m.block);
     lastIndex = m.index + m.length;
   }
-
   if (lastIndex < content.length) {
     const text = content.slice(lastIndex).trim();
     if (text) blocks.push({ type: "text", content: text });
   }
-
   return blocks.length > 0 ? blocks : [{ type: "text", content: content.trim() }];
 };
-
 const detectStreamingBlock = (content: string): { type: "file" | "edit" | "create"; filename: string; streamingCode: string } | null => {
   const openPattern = /<<<(FILE|EDIT|CREATE)\s+([^>]+)>>>/;
   const parts = content.split(/<<<END>>>/g);
@@ -355,9 +332,7 @@ const detectStreamingBlock = (content: string): { type: "file" | "edit" | "creat
   }
   return null;
 };
-
 const approxTokens = (text: string): number => Math.ceil(text.length / 3.5);
-
 const relativeTime = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime();
   const s = Math.floor(diff / 1000);
@@ -368,25 +343,10 @@ const relativeTime = (iso: string): string => {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 };
-
 export default function QuestsWorkspace() {
   const params = useParams<{ id: string }>();
   const envId = params.id;
   const [, setLocation] = useLocation();
-
-  // Portal the workspace into a fixed full-viewport div so it owns a definite
-  // 100vh height box. Without this, the AppWindow scroll-container parent breaks
-  // every percentage-height chain (h-full / height:100%) and collapses all panels.
-  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    const el = document.createElement("div");
-    el.id = "keystone-workspace-portal";
-    el.style.cssText = "position:fixed;inset:0;height:100vh;width:100vw;z-index:50;overflow:hidden;";
-    document.body.appendChild(el);
-    setPortalTarget(el);
-    return () => { document.body.removeChild(el); };
-  }, []);
-
   const [userPlan, setUserPlan] = useState<string>("free");
   const [environment, setEnvironment] = useState<QuestsEnvironment | null>(null);
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
@@ -441,7 +401,6 @@ export default function QuestsWorkspace() {
   const [ksArtifacts, setKsArtifacts] = useState<KSArtifact[]>([]);
   const [ksArtifactsLoading, setKsArtifactsLoading] = useState(false);
   const [ksImporting, setKsImporting] = useState<string | null>(null);
-
   const KS_LANG_EXT: Record<string, string> = {
     python: ".py", py: ".py", javascript: ".js", js: ".js",
     typescript: ".ts", ts: ".ts", tsx: ".tsx", jsx: ".jsx",
@@ -455,7 +414,6 @@ export default function QuestsWorkspace() {
     c: ".c", cpp: ".cpp", "c++": ".cpp",
     vue: ".vue", svelte: ".svelte",
   };
-
   const loadKsArtifacts = async () => {
     setKsArtifactsLoading(true);
     try {
@@ -467,9 +425,7 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Failed to load artifacts:", e); }
     finally { setKsArtifactsLoading(false); }
   };
-
   useEffect(() => { loadKsArtifacts(); }, []);
-
   useEffect(() => {
     return () => {
       if (diffContentDisposableRef.current) {
@@ -478,7 +434,6 @@ export default function QuestsWorkspace() {
       }
     };
   }, []);
-
   const importArtifactToEnv = async (artifact: KSArtifact) => {
     if (!envId) return;
     setKsImporting(artifact.id);
@@ -513,15 +468,12 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Failed to import artifact:", e); toast.error("Failed to import artifact"); }
     finally { setKsImporting(null); }
   };
-
   const [renamingKsArtifactId, setRenamingKsArtifactId] = useState<string | null>(null);
   const [renameKsArtifactValue, setRenameKsArtifactValue] = useState("");
-
   const startKsArtifactRename = (id: string, currentName: string) => {
     setRenamingKsArtifactId(id);
     setRenameKsArtifactValue(currentName);
   };
-
   const submitKsArtifactRename = async () => {
     if (!renamingKsArtifactId || !renameKsArtifactValue.trim()) { setRenamingKsArtifactId(null); return; }
     const old = ksArtifacts.find(a => a.id === renamingKsArtifactId);
@@ -539,15 +491,12 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error(e); toast.error("Rename failed"); }
     finally { setRenamingKsArtifactId(null); }
   };
-
   const [renamingFile, setRenamingFile] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-
   const startRename = (filePath: string, currentName: string) => {
     setRenamingFile(filePath);
     setRenameValue(currentName);
   };
-
   const submitRename = async () => {
     if (!renamingFile || !renameValue.trim() || !envId) { setRenamingFile(null); return; }
     const dir = renamingFile.includes("/") ? renamingFile.substring(0, renamingFile.lastIndexOf("/") + 1) : "";
@@ -567,15 +516,12 @@ export default function QuestsWorkspace() {
     } catch (e) { console.error("Rename failed:", e); toast.error("Rename failed"); }
     finally { setRenamingFile(null); }
   };
-
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-
   const { models, provider: detectedProvider, providers, getModelsForProvider, isLoading: isLoadingModels } = useAvailableModels();
   const [selectedProvider, setSelectedProvider] = useState("");
-
   const [gexRunning, setGexRunning] = useState(false);
   const [gexSnapshots, setGexSnapshots] = useState<Record<string, string>>({});
   const [gexModifiedFiles, setGexModifiedFiles] = useState<string[]>([]);
@@ -587,7 +533,6 @@ export default function QuestsWorkspace() {
   const [collapsedDiffs, setCollapsedDiffs] = useState<Set<string>>(new Set());
   const diffContentListenerRef = useRef<{ dispose: () => void } | null>(null);
   const sessionMessageIds = useRef<Set<string>>(new Set());
-
   const hasPendingReview = useMemo(() => {
     const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
     if (!lastAssistant) return false;
@@ -610,39 +555,30 @@ export default function QuestsWorkspace() {
       return true;
     });
   }, [messages, dismissedBlocks, rejectedBlocks]);
-
   const [runtimeSessionId, setRuntimeSessionId] = useState<string | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-
   const PYTHON_EXAMPLE = `# AiOS Runtime — Python
 import sys, platform, datetime
-
 print(f"Python {sys.version}")
 print(f"Platform: {platform.system()} {platform.machine()}")
 print(f"Time: {datetime.datetime.now().isoformat()}")
-
 # Try it: import a library, run calculations, etc.
 nums = [x**2 for x in range(1, 11)]
 print(f"Squares 1-10: {nums}")
 print(f"Sum: {sum(nums)}")`;
-
   const NODE_EXAMPLE = `// AiOS Runtime — Node.js
 const os = require('os');
-
 console.log(\`Node \${process.version}\`);
 console.log(\`Platform: \${os.platform()} \${os.arch()}\`);
 console.log(\`Time: \${new Date().toISOString()}\`);
-
 // Try it: run logic, import modules, etc.
 const nums = Array.from({length: 10}, (_, i) => (i+1)**2);
 console.log(\`Squares 1-10: [\${nums}]\`);
 console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
-
   const [termCode, setTermCode] = useState(PYTHON_EXAMPLE);
   const [termLang, setTermLang] = useState<"python" | "node">("python");
   const [termCodeEdited, setTermCodeEdited] = useState(false);
-
   const handleLangChange = (newLang: "python" | "node") => {
     const oldDefault = termLang === "python" ? PYTHON_EXAMPLE : NODE_EXAMPLE;
     const isDefault = termCode.trim() === oldDefault.trim() || !termCodeEdited;
@@ -657,7 +593,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   const [pkgName, setPkgName] = useState("");
   const [pkgEco, setPkgEco] = useState<"python" | "node">("python");
   const [pkgInstalling, setPkgInstalling] = useState(false);
-
   const [deployRepoUrl, setDeployRepoUrl] = useState("");
   const [deployTargetDir, setDeployTargetDir] = useState("myapp");
   const [deployRef, setDeployRef] = useState("");
@@ -694,27 +629,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   const [exportDir, setExportDir] = useState("");
   const [exportResult, setExportResult] = useState<any>(null);
   const [exporting, setExporting] = useState(false);
-
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [ledgerAutoRefresh, setLedgerAutoRefresh] = useState(false);
   const [ledgerFilter, setLedgerFilter] = useState("all");
   const [ledgerExpanded, setLedgerExpanded] = useState<Set<number>>(new Set());
   const [ledgerLoading, setLedgerLoading] = useState(false);
-
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [fileSearchResults, setFileSearchResults] = useState<SearchHit[]>([]);
   const [fileSearching, setFileSearching] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
-
   const [streamingContent, setStreamingContent] = useState("");
-
   useEffect(() => {
     if (providers.length > 0 && !selectedProvider) {
       const def = providers.find(p => p.is_default) || providers[0];
       setSelectedProvider(def.id);
     }
   }, [providers, selectedProvider]);
-
   useEffect(() => {
     if (selectedProvider) {
       const providerModels = getModelsForProvider(selectedProvider);
@@ -723,14 +653,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       }
     }
   }, [selectedProvider]);
-
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-
   useEffect(() => {
     apiFetch("/api/auth/me").then(r => r.json()).then(data => {
       const u = data?.user || data;
@@ -742,9 +670,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       }
     }).catch(() => {});
   }, []);
-
   const isEnterprise = ["enterprise", "pro", "admin", "business", "team"].includes(String(userPlan || "").toLowerCase());
-
   useEffect(() => {
     window.scrollTo(0, 0);
     if (envId) {
@@ -754,7 +680,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       initRuntimeSession();
     }
   }, [envId]);
-
   useEffect(() => {
     if (shouldAutoScroll) {
       const timer = setTimeout(() => {
@@ -763,7 +688,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return () => clearTimeout(timer);
     }
   }, [messages, shouldAutoScroll]);
-
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     if (ledgerAutoRefresh && activeTab === "ledger") {
@@ -771,23 +695,19 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     }
     return () => { if (interval) clearInterval(interval); };
   }, [ledgerAutoRefresh, activeTab, runtimeSessionId]);
-
   useEffect(() => {
     if (activeTab === "ledger") loadLedger();
   }, [activeTab]);
-
   const handleChatScroll = useCallback(() => {
     const container = chatContainerRef.current;
     if (!container) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     setShouldAutoScroll(scrollHeight - scrollTop - clientHeight < 100);
   }, []);
-
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     setShouldAutoScroll(true);
   };
-
   const initRuntimeSession = async () => {
     setRuntimeLoading(true);
     setRuntimeError(null);
@@ -840,7 +760,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setRuntimeLoading(false);
     }
   };
-
   const loadEnvironment = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}`).then(r => r.json());
@@ -850,7 +769,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setLocation("/keystone");
     }
   };
-
   const scanDepFiles = (node: FileNode): { python: string[]; node: boolean } => {
     const result = { python: [] as string[], node: false };
     const scan = (n: FileNode) => {
@@ -863,7 +781,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     scan(node);
     return result;
   };
-
   const loadFileTree = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/files/tree`).then(r => r.json());
@@ -889,7 +806,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       console.error("Failed to load file tree:", error);
     }
   };
-
   const loadChatHistory = async () => {
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/chat/history?limit=50`).then(r => r.json());
@@ -908,7 +824,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       console.error("Failed to load chat history:", error);
     }
   };
-
   const loadFile = async (path: string) => {
     if (selectedFile && selectedFile !== path) {
       setTabContents(prev => ({ ...prev, [selectedFile!]: { content: fileContent, original: originalContent } }));
@@ -937,7 +852,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsLoadingFile(false);
     }
   };
-
   const closeTab = (path: string) => {
     setOpenTabs(prev => {
       const next = prev.filter(t => t !== path);
@@ -959,7 +873,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     });
     setTabContents(prev => { const n = { ...prev }; delete n[path]; return n; });
   };
-
   const switchTab = (path: string) => {
     if (path === selectedFile) return;
     if (selectedFile) {
@@ -970,7 +883,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     setFileContent(cached?.content || "");
     setOriginalContent(cached?.original || "");
   };
-
   const saveFile = async () => {
     if (fileContentTimerRef.current) { clearTimeout(fileContentTimerRef.current); fileContentTimerRef.current = null; }
     const currentContent = fileContentRef.current || fileContent;
@@ -991,7 +903,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsSavingFile(false);
     }
   };
-
   const resetContext = async () => {
     setIsResettingContext(true);
     try {
@@ -1018,7 +929,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsResettingContext(false);
     }
   };
-
   const cloneGithubRepo = async () => {
     if (!githubUrl.trim()) return;
     setIsCloningRepo(true);
@@ -1042,13 +952,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setIsCloningRepo(false);
     }
   };
-
   const runGex = async (targetFile?: string) => {
     if (gexRunning || isSendingMessage) return;
     setGexRunning(true);
     setActiveTab("chat");
     if (isMobile) setMobileTab("chat");
-
     const unrevertedFiles = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f) && gexSnapshots[f] !== undefined);
     for (const fp of unrevertedFiles) {
       try {
@@ -1059,16 +967,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         });
       } catch {}
     }
-
     setGexSnapshots({});
     setGexModifiedFiles([]);
     setGexPatchAccepted(new Set());
-
     const scanTarget = targetFile || "the entire project";
     const gexPrompt = targetFile
       ? `Scan and surgically fix: ${targetFile}`
       : "Scan the entire project for bugs, issues, and improvements. Apply surgical fixes.";
-
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -1077,14 +982,11 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     };
     setMessages(prev => [...prev, userMessage]);
     setChatError(null);
-
     const assistantId = `gex-${Date.now()}`;
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "", timestamp: new Date().toISOString() }]);
-
     let collectedSnapshots: Record<string, string> = {};
     let allWritten: string[] = [];
     let allEdited: string[] = [];
-
     try {
       const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
@@ -1099,18 +1001,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         }),
         credentials: "include"
       });
-
       if (!response.ok) {
         setChatError(`Gex scan failed: ${response.status}`);
         setMessages(prev => prev.filter(m => m.id !== assistantId));
         setGexRunning(false);
         return;
       }
-
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1129,7 +1028,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               allWritten = data.files_written || [];
               allEdited = data.files_edited || [];
               const totalModified = [...allWritten, ...allEdited];
-
               if (totalModified.length > 0) {
                 loadFileTree();
                 const fullSnapshots = { ...collectedSnapshots };
@@ -1138,7 +1036,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 }
                 setGexSnapshots(fullSnapshots);
                 setGexModifiedFiles(totalModified);
-
                 for (const fp of totalModified) {
                   try {
                     const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(fp)}`).then(r => r.json());
@@ -1154,7 +1051,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   setFileContent(r2.content || "");
                   setOriginalContent(r2.content || "");
                 }
-
                 toast(
                   <div className="flex flex-col gap-1" data-testid="gex-findings-toast">
                     <div className="flex items-center gap-2 font-semibold text-red-400">
@@ -1172,7 +1068,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               } else {
                 toast.info("_Gex scan complete — no changes needed.", { duration: 5000 });
               }
-
               if (data.gex_workspace_id) {
                 setMessages(prev => [...prev, {
                   id: `gex-ws-${Date.now()}`,
@@ -1194,7 +1089,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setGexRunning(false);
     }
   };
-
   const revertGexFile = async (filePath: string) => {
     const snapshot = gexSnapshots[filePath];
     if (snapshot === undefined) return;
@@ -1216,43 +1110,35 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Revert failed");
     }
   };
-
   const acceptGexFile = (filePath: string) => {
     setGexPatchAccepted(prev => new Set(prev).add(filePath));
     toast.success(`Accepted: ${filePath.split("/").pop()}`);
   };
-
   const acceptAllGex = () => {
     setGexPatchAccepted(new Set(gexModifiedFiles));
     toast.success("All patches accepted");
   };
-
   const clearGexPatches = () => {
     setGexSnapshots({});
     setGexModifiedFiles([]);
     setGexPatchAccepted(new Set());
   };
-
   const dismissBlock = (blockKey: string) => {
     setDismissedBlocks(prev => new Set(prev).add(blockKey));
   };
-
   const rejectBlock = async (blockKey: string, filePath: string, blockContent?: string) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
-
     let currentContent: string | null = null;
     try {
       const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(filePath)}`).then(r => r.json());
       currentContent = r.content ?? null;
     } catch {}
-
     if (blockContent !== undefined && currentContent !== null && currentContent !== blockContent) {
       setRejectedBlocks(prev => new Set(prev).add(blockKey));
       toast.info(`File was modified after this block — skipped revert for ${filePath.split("/").pop()}`);
       return;
     }
-
     const restoreTo = (snapshot === undefined || snapshot === null) ? "" : snapshot;
     try {
       await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
@@ -1272,18 +1158,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     setRejectedBlocks(prev => new Set(prev).add(blockKey));
     toast.success(`Reverted: ${filePath.split("/").pop()}`);
   };
-
   const parseLineRange = (range: string): { start: number; end: number } | null => {
     const m = range.match(/lines?\s+(\d+)(?:\s*-\s*(\d+))?/i);
     if (!m) return null;
     return { start: parseInt(m[1]), end: m[2] ? parseInt(m[2]) : parseInt(m[1]) };
   };
-
   const parseInsertLine = (range: string): number | null => {
     const m = range.match(/(?:after\s+)?line\s+(\d+)/i);
     return m ? parseInt(m[1]) : null;
   };
-
   const revertSingleOp = async (opKey: string, filePath: string, op: { action: string; range: string; code: string }) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
@@ -1292,7 +1175,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return;
     }
     const snapshotLines = snapshot.split("\n");
-
     let currentContent: string;
     try {
       const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(filePath)}`).then(r => r.json());
@@ -1302,10 +1184,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return;
     }
     const currentLines = currentContent.split("\n");
-
     let newLines = [...currentLines];
     const action = op.action.toUpperCase();
-
     if (action === "REPLACE") {
       const lr = parseLineRange(op.range);
       if (lr) {
@@ -1341,7 +1221,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         newLines.splice(bestIdx, 0, ...deletedLines);
       }
     }
-
     const newContent = newLines.join("\n");
     try {
       await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
@@ -1360,7 +1239,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Revert failed");
     }
   };
-
   const rejectAllEditOps = async (blockKey: string, filePath: string, editOps: Array<{ action: string; range: string; code: string }>) => {
     for (let i = editOps.length - 1; i >= 0; i--) {
       const opKey = `${blockKey}-op-${i}`;
@@ -1369,7 +1247,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     }
     setRejectedBlocks(prev => new Set(prev).add(blockKey));
   };
-
   const toggleDiff = (blockKey: string) => {
     setCollapsedDiffs(prev => {
       const n = new Set(prev);
@@ -1377,7 +1254,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return n;
     });
   };
-
   const rejectChatFile = async (filePath: string) => {
     const allSnapshots = { ...chatSnapshots, ...gexSnapshots };
     const snapshot = allSnapshots[filePath];
@@ -1408,7 +1284,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Reject failed");
     }
   };
-
   const sendMessage = async () => {
     const currentInput = textareaRef.current?.value?.trim() || chatInput.trim();
     if (!currentInput || isSendingMessage) return;
@@ -1432,7 +1307,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       content: "",
       timestamp: new Date().toISOString()
     }]);
-
     try {
       setChatError(null);
       const abortCtrl = new AbortController();
@@ -1452,7 +1326,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         credentials: "include",
         signal: abortCtrl.signal
       });
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Request failed" }));
         const errorMessage = errorData.detail || "Failed to send message";
@@ -1460,11 +1333,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         toast.error(errorMessage);
         throw new Error(errorMessage);
       }
-
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
-
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
@@ -1555,7 +1426,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     toast.success(`${parts.join(', ')} file${totalChanged > 1 ? 's' : ''}`);
                     loadFileTree();
                     const allChanged = [...finalFiles, ...finalEdits];
-
                     const mergedSnapshots: Record<string, string> = {};
                     for (const fp of allChanged) {
                       if (chatSnapshotsRef.current[fp] !== undefined) {
@@ -1566,7 +1436,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     }
                     setGexSnapshots(prev => ({ ...prev, ...mergedSnapshots }));
                     setGexModifiedFiles(prev => [...new Set([...prev, ...allChanged])]);
-
                     for (const fp of allChanged) {
                       try {
                         const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(fp)}`).then(r => r.json());
@@ -1622,14 +1491,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setStreamingContent("");
     }
   };
-
   const stopStream = () => {
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
       streamAbortRef.current = null;
     }
   };
-
   const runCode = async () => {
     if (!runtimeSessionId || termRunning) return;
     setTermRunning(true);
@@ -1648,7 +1515,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setTermRunning(false);
     }
   };
-
   const installPackage = async () => {
     if (!runtimeSessionId || !pkgName.trim() || pkgInstalling) return;
     setPkgInstalling(true);
@@ -1667,7 +1533,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setPkgInstalling(false);
     }
   };
-
   const deployCloneRepo = async () => {
     if (!runtimeSessionId || !deployRepoUrl.trim()) return;
     setDeployCloning(true);
@@ -1690,7 +1555,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployCloning(false);
     }
   };
-
   const deployCheckoutRef = async () => {
     if (!runtimeSessionId || !deployRef.trim()) return;
     setDeployCheckingOut(true);
@@ -1708,7 +1572,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployCheckingOut(false);
     }
   };
-
   const deployDetectStack = async () => {
     if (!runtimeSessionId) return;
     setDeployDetecting(true);
@@ -1725,7 +1588,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setDeployDetecting(false);
     }
   };
-
   const syncWorkspaceToRuntime = async () => {
     if (!runtimeSessionId || !envId) return false;
     try {
@@ -1739,7 +1601,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return false;
     }
   };
-
   const deployInstallDeps = async (type: "node" | "python") => {
     if (!runtimeSessionId) return;
     type === "node" ? setDeployInstallingNode(true) : setDeployInstallingPython(true);
@@ -1768,7 +1629,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       type === "node" ? setDeployInstallingNode(false) : setDeployInstallingPython(false);
     }
   };
-
   const installSinglePackage = async () => {
     if (!runtimeSessionId || !singlePkg.trim()) return;
     setSinglePkgInstalling(true);
@@ -1789,7 +1649,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setSinglePkgInstalling(false);
     }
   };
-
   const deploySaveEnv = async () => {
     if (!runtimeSessionId) return;
     setEnvSaving(true);
@@ -1809,7 +1668,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setEnvSaving(false);
     }
   };
-
   const deployStartProcess = async () => {
     if (!runtimeSessionId || !procName.trim() || !procCommand.trim()) return;
     setProcStarting(true);
@@ -1848,7 +1706,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setProcStarting(false);
     }
   };
-
   const deployStopProcess = async (name: string) => {
     if (!runtimeSessionId) return;
     try {
@@ -1863,7 +1720,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Failed to stop process");
     }
   };
-
   const deployViewLogs = async (name: string) => {
     if (!runtimeSessionId) return;
     try {
@@ -1879,7 +1735,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Failed to get logs");
     }
   };
-
   const deployCheckPort = async () => {
     if (!runtimeSessionId || !healthPort) return;
     setHealthChecking(true);
@@ -1896,7 +1751,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setHealthChecking(false);
     }
   };
-
   const deployHttpCheck = async () => {
     if (!runtimeSessionId || !healthUrl.trim()) return;
     setHealthChecking(true);
@@ -1913,7 +1767,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setHealthChecking(false);
     }
   };
-
   const deployExport = async () => {
     if (!runtimeSessionId || !exportDir.trim()) return;
     setExporting(true);
@@ -1931,7 +1784,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setExporting(false);
     }
   };
-
   const loadLedger = async () => {
     setLedgerLoading(true);
     try {
@@ -1946,7 +1798,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setLedgerLoading(false);
     }
   };
-
   const searchInFiles = async () => {
     if (!runtimeSessionId || !fileSearchQuery.trim()) return;
     setFileSearching(true);
@@ -1965,7 +1816,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setFileSearching(false);
     }
   };
-
   const toggleFolder = (path: string) => {
     setExpandedFolders(prev => {
       const next = new Set(prev);
@@ -1977,7 +1827,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       return next;
     });
   };
-
   const getFileIcon = (name: string) => {
     if (name.endsWith(".json")) return <FileJson className="w-4 h-4 text-yellow-400" />;
     if (name.endsWith(".ts") || name.endsWith(".tsx")) return <FileCode className="w-4 h-4 text-blue-400" />;
@@ -1987,7 +1836,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     if (name.endsWith(".css") || name.endsWith(".scss")) return <FileCode className="w-4 h-4 text-pink-400" />;
     return <File className="w-4 h-4 text-muted-foreground" />;
   };
-
   const getLanguageFromPath = (path: string): string => {
     const ext = path.split(".").pop()?.toLowerCase() || "";
     const langMap: Record<string, string> = {
@@ -2001,11 +1849,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     };
     return langMap[ext] || "text";
   };
-
   const renderFileTree = (node: FileNode, depth: number = 0) => {
     const isExpanded = expandedFolders.has(node.path);
     const isSelected = selectedFile === node.path;
-
     if (node.type === "directory") {
       return (
         <div key={node.path}>
@@ -2024,10 +1870,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       );
     }
-
     const isGexModified = gexModifiedFiles.includes(node.path);
     const isGexAccepted = gexPatchAccepted.has(node.path);
-
     if (renamingFile === node.path) {
       return (
         <div key={node.path} className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: `${depth * 12 + 8}px` }}>
@@ -2045,14 +1889,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       );
     }
-
     return (
       <div key={node.path} className="group relative flex items-center">
         <button
           onClick={() => loadFile(node.path)}
           onDoubleClick={(e) => { e.preventDefault(); startRename(node.path, node.name); }}
           className={`flex items-center gap-2 w-full px-2 py-1 text-left text-sm hover:bg-muted/50 rounded transition-colors ${
-            isSelected ? "qw-file-active text-foreground" : ""
+            isSelected ? "bg-indigo-600/20 text-indigo-300" : ""
           } ${isGexModified && !isGexAccepted ? "ring-1 ring-red-500/40" : ""} ${isGexAccepted ? "ring-1 ring-green-500/30" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           data-testid={`file-${node.path}`}
@@ -2105,14 +1948,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     );
   };
-
   const hasUnsavedChanges = fileContent !== originalContent;
-
   const cardClass = "bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-sm";
-
   if (!environment) {
-    if (!portalTarget) return null;
-    return createPortal(
+    return (
       <>
         <style>{`
           @keyframes ksShimmer {
@@ -2132,7 +1971,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             50% { transform: scale(1.15); opacity: 0.6; }
           }
         `}</style>
-        <div className="h-full min-h-full bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
+        <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-[40%] -left-[20%] w-[80%] h-[80%] rounded-full bg-indigo-500/[0.06] blur-[100px] animate-pulse" />
             <div className="absolute -bottom-[30%] -right-[20%] w-[70%] h-[70%] rounded-full bg-cyan-500/[0.05] blur-[100px] animate-pulse" style={{ animationDelay: "1s" }} />
@@ -2140,49 +1979,45 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
           <div className="text-center relative z-10 flex flex-col items-center">
             <div className="relative mb-4">
-              <div className="absolute inset-0 rounded-full bg-emerald-500/20 blur-xl" style={{ animation: "ksPulseRing 2s ease-in-out infinite" }} />
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/25 to-amber-500/15 border border-white/10 flex items-center justify-center backdrop-blur-sm relative shadow-[0_0_24px_rgba(18,212,138,0.25)]">
-                <span className="font-[family-name:var(--qw-font-display)] text-lg font-extrabold bg-gradient-to-br from-white to-emerald-400 bg-clip-text text-transparent">K</span>
+              <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl" style={{ animation: "ksPulseRing 2s ease-in-out infinite" }} />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center backdrop-blur-sm relative">
+                <Code2 className="w-7 h-7 text-indigo-400" style={{ filter: "drop-shadow(0 0 8px rgba(99,102,241,0.5))" }} />
               </div>
             </div>
             <div className="flex items-baseline gap-0 mb-1">
-              <span className="text-[22px] font-bold tracking-tight bg-gradient-to-r from-white via-white/90 to-emerald-300/80 bg-clip-text text-transparent">Key</span><span className="text-[22px] font-light tracking-tight text-emerald-400/90">Stone</span>
+              <span className="text-[22px] font-bold tracking-tight bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent">Key</span>
+              <span className="text-[22px] font-light tracking-tight ks-shimmer">Stone</span>
             </div>
             <div className="flex items-center gap-2 mb-5">
-              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
-              <span className="text-[10px] font-semibold tracking-[0.35em] uppercase text-emerald-400/80">AiAssist Secure</span>
-              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent" />
+              <span className="text-[10px] font-semibold tracking-[0.35em] uppercase ks-shimmer">IDE</span>
+              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
             </div>
             <div className="flex items-center gap-1.5 mb-5">
               <span className="text-[10px] text-white/25 tracking-wide">by</span>
               <img src={aiasLogo} alt="AiAS" className="w-4 h-4 rounded-sm opacity-40" />
               <span className="text-[10px] font-medium tracking-wider text-white/30">AiAS</span>
             </div>
-            <div className="w-5 h-5 border-2 border-white/15 border-t-emerald-400 rounded-full animate-spin mb-3" />
+            <div className="w-5 h-5 border-2 border-white/15 border-t-indigo-400 rounded-full animate-spin mb-3" />
             <span className="text-[11px] text-white/30">Loading environment...</span>
           </div>
         </div>
-      </>,
-      portalTarget
+      </>
     );
   }
-
   const renderTerminalTab = () => (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col h-full qw-panel-body"
+      className="flex flex-col h-full"
       data-testid="tab-content-terminal"
     >
-      <div className="qw-panel-head-row" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
-        <Terminal className="w-4 h-4" style={{ color: "#12d48a" }} />
-        <div className="min-w-0">
-          <div className="qw-panel-kicker">Terminal</div>
-          <span className="text-sm font-semibold text-foreground">Code Runner</span>
-        </div>
+      <div className="flex items-center gap-2 p-3 border-b border-border">
+        <Terminal className="w-4 h-4 text-emerald-400" />
+        <span className="text-sm font-medium text-foreground">Code Runner</span>
         <div className="ml-auto flex items-center gap-2">
           <Select value={termLang} onValueChange={(v) => handleLangChange(v as "python" | "node")}>
-            <SelectTrigger className="qw-select h-7 w-24 text-xs" data-testid="select-terminal-lang">
+            <SelectTrigger className="h-7 w-24 text-xs bg-muted border-border" data-testid="select-terminal-lang">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -2190,19 +2025,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               <SelectItem value="node">Node.js</SelectItem>
             </SelectContent>
           </Select>
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={runCode}
             disabled={termRunning || !runtimeSessionId}
-            className="qw-run-btn"
+            className="h-7 bg-emerald-600 hover:bg-emerald-700 text-xs"
             data-testid="button-run-code"
           >
-            {termRunning ? <Loader2 className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            {termRunning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Play className="w-3 h-3 mr-1" />}
             Run
-          </button>
+          </Button>
         </div>
       </div>
-
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-[3] min-h-0">
           <Editor
@@ -2223,35 +2057,40 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             data-testid="editor-terminal-code"
           />
         </div>
-
-        <div className="flex-[2] qw-term-output border-t" style={{ background: "rgba(0,0,0,.5)" }}>
+        <div className="flex-[2] border-t border-border bg-black/30 overflow-auto">
           {termOutput ? (
-            <div className="p-3 font-mono text-xs space-y-1.5" data-testid="terminal-output">
-              <div className="qw-term-exit">
-                EXIT CODE
-                <b className={termOutput.exit_code === 0 ? "" : "err"}>{termOutput.exit_code}</b>
+            <div className="p-3 font-mono text-xs space-y-1" data-testid="terminal-output">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-muted-foreground text-[10px]">EXIT CODE:</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  termOutput.exit_code === 0
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-red-500/20 text-red-400"
+                }`}>
+                  {termOutput.exit_code}
+                </span>
               </div>
               {termOutput.stdout && (
-                <pre className="whitespace-pre-wrap text-emerald-300/90">{termOutput.stdout}</pre>
+                <pre className="whitespace-pre-wrap text-emerald-300/90 bg-emerald-950/30 rounded p-2 border border-emerald-900/30">{termOutput.stdout}</pre>
               )}
               {termOutput.stderr && (
-                <pre className="whitespace-pre-wrap text-red-300/90">{termOutput.stderr}</pre>
+                <pre className="whitespace-pre-wrap text-red-300/90 bg-red-950/30 rounded p-2 border border-red-900/30">{termOutput.stderr}</pre>
               )}
             </div>
           ) : (
-            <div className="qw-panel-empty h-full">
-              <div className="qw-panel-empty-icon"><Terminal className="w-6 h-6" /></div>
-              <p className="qw-panel-empty-title">No output yet</p>
-              <p className="qw-panel-empty-sub">Run code to see stdout / stderr here.</p>
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+              <div className="text-center">
+                <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p>Run code to see output</p>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      <div className="qw-pkg-row border-t" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
-        <Package className="w-4 h-4" style={{ color: "#8b8798" }} />
+      <div className="p-3 border-t border-border flex items-center gap-2">
+        <Package className="w-4 h-4 text-muted-foreground" />
         <Select value={pkgEco} onValueChange={(v) => setPkgEco(v as "python" | "node")}>
-          <SelectTrigger className="qw-select h-7 w-20 text-xs" data-testid="select-pkg-eco">
+          <SelectTrigger className="h-7 w-20 text-xs bg-muted border-border" data-testid="select-pkg-eco">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -2263,29 +2102,25 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           value={pkgName}
           onChange={(e) => setPkgName(e.target.value)}
           placeholder="package name"
-          className="qw-input flex-1 h-7 text-xs"
+          className="flex-1 h-7 text-xs bg-muted border-border"
           onKeyDown={(e) => e.key === "Enter" && installPackage()}
           data-testid="input-pkg-name"
         />
-        <button
-          type="button"
+        <Button
+          size="sm"
+          variant="outline"
           onClick={installPackage}
           disabled={!pkgName.trim() || pkgInstalling || !runtimeSessionId}
-          className="qw-pkg-btn"
+          className="h-7 text-xs"
           data-testid="button-install-pkg"
         >
           {pkgInstalling ? <Loader2 className="w-3 h-3 animate-spin" /> : "Install"}
-        </button>
+        </Button>
       </div>
     </motion.div>
   );
-
   const renderSettingsContent = () => (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1 qw-panel-body" data-testid="tab-content-settings">
-      <div className="mb-1">
-        <div className="qw-panel-kicker">Settings</div>
-        <h2 className="text-base font-semibold text-foreground">Environment</h2>
-      </div>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-4 space-y-6 overflow-y-auto flex-1" data-testid="tab-content-settings">
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5" />
@@ -2381,27 +2216,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </div>
     </motion.div>
   );
-
   const renderDeployTab = () => (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col h-full qw-panel-body"
+      className="flex flex-col h-full"
       data-testid="tab-content-deploy"
     >
-      <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
-        <Rocket className="w-4 h-4 text-sky-400" />
-        <div className="min-w-0 flex-1">
-          <div className="qw-panel-kicker">Manage</div>
-          <span className="text-sm font-semibold text-foreground">Processes & deploy</span>
-        </div>
+      <div className="flex items-center gap-2 p-3 border-b border-border">
+        <Rocket className="w-4 h-4 text-blue-400" />
+        <span className="text-sm font-medium text-foreground">Manage</span>
         {runtimeSessionId && (
-          <span className="text-[10px] text-muted-foreground font-mono" data-testid="text-session-id">
+          <span className="ml-auto text-[10px] text-muted-foreground font-mono" data-testid="text-session-id">
             {runtimeSessionId.slice(0, 8)}
           </span>
         )}
       </div>
-
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-3">
           <Button size="sm" variant="outline" className="w-full h-8 text-xs" disabled={runtimeSyncing || !runtimeSessionId} onClick={async () => {
@@ -2434,7 +2264,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               </div>
             </div>
           </div>
-
           {/* Stack Detection — commented out for now
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
@@ -2457,7 +2286,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             )}
           </div>
           */}
-
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Package className="w-4 h-4 text-amber-400" />
@@ -2474,7 +2302,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   ))}
                 </div>
               )}
-
               <div className="space-y-2">
                 {detectedDepFiles.node && (
                   <Button size="sm" onClick={() => deployInstallDeps("node")} disabled={deployInstallingNode || !runtimeSessionId} className="h-7 text-xs bg-green-600 hover:bg-green-700 w-full" data-testid="button-install-node-deps">
@@ -2496,7 +2323,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   <span className="text-[10px] text-muted-foreground">Frozen lockfile</span>
                 </div>
               </div>
-
               <div className="border-t border-border/50 pt-2 space-y-1.5">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Add Package</span>
                 <div className="flex gap-1 items-center">
@@ -2522,14 +2348,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </Button>
                 </div>
               </div>
-
               <p className="text-[10px] text-muted-foreground">Node → local <code className="text-emerald-400/70">node_modules/</code> · Python → local <code className="text-blue-400/70">.venv/</code></p>
             </div>
             {deployDepsOutput && (
               <pre className="text-[10px] font-mono bg-black/30 rounded p-2 mt-2 max-h-32 overflow-auto text-muted-foreground" data-testid="deps-output">{deployDepsOutput.slice(-2000)}</pre>
             )}
           </div>
-
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Shield className="w-4 h-4 text-emerald-400" />
@@ -2556,7 +2380,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               </div>
             </div>
           </div>
-
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Server className="w-4 h-4 text-indigo-400" />
@@ -2610,7 +2433,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               )}
             </div>
           </div>
-
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-cyan-400" />
@@ -2639,7 +2461,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               )}
             </div>
           </div>
-
           <div className={cardClass}>
             <div className="flex items-center gap-2 mb-3">
               <HardDrive className="w-4 h-4 text-amber-400" />
@@ -2662,26 +2483,21 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </ScrollArea>
     </motion.div>
   );
-
   const renderLedgerTab = () => {
     const filteredEntries = ledgerFilter === "all"
       ? ledgerEntries
       : ledgerEntries.filter(e => e.tool === ledgerFilter);
     const toolNames = [...new Set(ledgerEntries.map(e => e.tool))].sort();
-
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col h-full min-h-0 qw-panel-body"
+        className="flex flex-col h-full"
         data-testid="tab-content-ledger"
       >
-        <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
-          <ScrollText className="w-4 h-4" style={{ color: "#f5a524" }} />
-          <div className="min-w-0 flex-1">
-            <div className="qw-panel-kicker">Ledger</div>
-            <span className="text-sm font-semibold text-foreground">Tool Ledger</span>
-          </div>
+        <div className="flex items-center gap-2 p-3 border-b border-border">
+          <ScrollText className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-medium text-foreground">Tool Ledger</span>
           <div className="ml-auto flex items-center gap-2">
             <Select value={ledgerFilter} onValueChange={setLedgerFilter}>
               <SelectTrigger className="h-7 w-28 text-xs bg-muted border-border" data-testid="select-ledger-filter">
@@ -2702,7 +2518,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Button>
           </div>
         </div>
-
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1">
             {filteredEntries.length === 0 ? (
@@ -2760,69 +2575,19 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       </motion.div>
     );
   };
-
   const renderChatPanel = (compact: boolean = false) => (
-    // Anchored to the nearest positioned ancestor. Every layout-critical
-    // property is set INLINE so the column fills its box even if a utility
-    // class is missing from the prebuilt stylesheet or a merge drops one:
-    // the desktop tab chain collapsed exactly this way (missing minHeight).
-    <div
-      className="qw-chat-root flex flex-col overflow-hidden h-full"
-      style={{
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        minHeight: 0, height: "100%", flex: "1 1 0%",
-        background: "linear-gradient(180deg, rgba(18,212,138,.04), transparent 140px)",
-      }}
-    >
-      <div className="qw-chat-status" data-testid="chat-status-bar">
-        <div className="left">
-          <span className="label">KeyStone Agent</span>
-          <span className="dot-s" style={{ background: runtimeSessionId ? "#12d48a" : "#6b7280", boxShadow: runtimeSessionId ? "0 0 8px #12d48a" : "none" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
-        </div>
-        <div className="meta">
-          <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
-          {editorMode === "keystone" && (
-            <span style={{ color: readOnlyMode ? "#f5a524" : "#12d48a" }}>{readOnlyMode ? "READ" : "R/W"}</span>
-          )}
-          <span data-testid="status-msg-count">{messages.length} MSG</span>
-        </div>
-      </div>
+    <div className="keystone-chat-panel flex flex-col h-full min-h-0 overflow-hidden">
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
-        className="qw-chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
-        style={{ flex: "1 1 0%", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden" }}
+        className="keystone-chat-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
       >
-        <div className={`qw-chat-list ${compact ? "compact" : ""} min-w-0 max-w-full overflow-hidden`}>
+        <div className={`space-y-${compact ? "3" : "4"} p-${compact ? "3" : "4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
-            <div className="py-6 px-4 min-h-[240px] flex items-start justify-center" data-testid="chat-empty-state">
-              <div className="qw-chat-empty w-full">
-                <div className="qw-chat-empty-head">
-                  <Bot className="w-4 h-4" style={{ color: "#12d48a" }} />
-                  <span>KeyStone Agent</span>
-                </div>
-                <div className="qw-chat-empty-body">
-                  <p>Reads your files. Writes code. Applies edits in place — with ownership at every layer.</p>
-                  <p className="qw-hint">Select a command or type below</p>
-                  <div className="mt-1">
-                    {[
-                      { k: "F1", label: "Explain this codebase", fill: "Explain this codebase" },
-                      { k: "F2", label: "Fix a bug", fill: "Fix a bug: " },
-                      { k: "F3", label: "Build a feature", fill: "Build a feature: " },
-                    ].map((c) => (
-                      <button
-                        key={c.k}
-                        onClick={() => { if (textareaRef.current) { textareaRef.current.value = c.fill; textareaRef.current.focus(); } }}
-                        className="qw-cmd-btn"
-                        data-testid={`key-${c.k.toLowerCase()}`}
-                      >
-                        <span className="qw-k">{c.k}</span>
-                        <span className="qw-l">{c.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <div className="text-center py-12 text-muted-foreground">
+              <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">Start a conversation with your AI assistant</p>
+              <p className="text-xs mt-1">Ask for help with code, debugging, or building features</p>
             </div>
           ) : (
             messages.map((msg) => {
@@ -2832,20 +2597,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   key={msg.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="qw-msg w-full min-w-0 max-w-full overflow-hidden"
+                  className="flex gap-3 w-full min-w-0 max-w-full overflow-hidden"
                   data-testid={`message-${msg.id}`}
                   data-role={msg.role}
                 >
-                  <div className={`qw-avatar ${isUser ? "user" : "ai"} flex-shrink-0`}>
-                    {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isUser ? "bg-indigo-600" : "bg-indigo-600/20"
+                  }`}>
+                    {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-indigo-400" />}
                   </div>
                   <div
-                    className={`qw-bubble ${isUser ? "user" : ""} min-w-0 overflow-hidden break-words text-foreground`}
-                    style={{
-                      flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere",
-                    }}
+                    className={`rounded-lg px-4 py-2 min-w-0 overflow-hidden break-words ${
+                      isUser ? "bg-indigo-600 text-white" : "bg-muted text-foreground"
+                    }`}
+                    style={{ flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere" }}
                   >
-                    <div className="who">{isUser ? "You" : "KeyStone"}</div>
+                    <div className="text-[10px] opacity-50 mb-1">{isUser ? "You" : "AI"}</div>
                     {isUser ? (
                       <p className="text-sm break-words" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}>{msg.content}</p>
                     ) : (() => {
@@ -3136,13 +2903,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               animate={{ opacity: 1, y: 0 }}
               className="flex gap-3"
             >
-              <div className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, rgba(18,212,138,.25), rgba(245,165,36,.18))", border: "1px solid rgba(18,212,138,.3)", borderRadius: 8 }}>
-                <Bot className="w-3.5 h-3.5" style={{ color: "#12d48a" }} />
+              <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-indigo-400" />
               </div>
-              <div className="px-3 py-2.5" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12 }}>
+              <div className="bg-muted rounded-lg px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#12d48a" }} />
-                  <span className="text-xs text-muted-foreground" style={{ letterSpacing: "0.04em", fontWeight: 600 }}>Thinking…</span>
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Generating...</span>
+                </div>
+                <div className="flex gap-1 mt-2">
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
               </div>
             </motion.div>
@@ -3150,14 +2922,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <div ref={chatEndRef} />
         </div>
       </div>
-
       {!shouldAutoScroll && messages.length > 3 && (
         <div className="absolute bottom-28 right-6 z-10">
           <Button
             size="sm"
             variant="outline"
-            className="rounded-sm h-7 w-7 p-0 shadow-lg"
-            style={{ background: "rgba(0,0,0,.7)", border: "1px solid rgba(18,212,138,.45)", color: "#12d48a" }}
+            className="rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg"
             onClick={scrollToBottom}
             data-testid="button-scroll-to-bottom"
           >
@@ -3165,9 +2935,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </Button>
         </div>
       )}
-
-      <div className={`qw-composer ${compact ? "compact" : ""}`} style={{ flexShrink: 0 }}>
-        <div className="qw-composer-box space-y-2">
+      <div className={`keystone-composer p-${compact ? "3" : "4"} border-t border-border space-y-2`}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3177,21 +2945,27 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Button>
           </div>
         )}
-        <div className="qw-mode-row">
-          <div className="qw-seg">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit ace-glow-border">
             <button
               onClick={() => setEditorMode("keystone")}
-              type="button"
-              className={editorMode === "keystone" ? "active" : ""}
-              title="KeyStone Mode: Full code editor"
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                editorMode === "keystone"
+                  ? "bg-gradient-to-r from-cyan-500/15 via-violet-500/15 to-pink-500/15 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Keystone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
-              <Code2 className="w-3 h-3 inline mr-1" />KeyStone
+              <Code2 className="w-3 h-3 inline mr-1" /><span className={editorMode === "keystone" ? "ace-text-shimmer" : ""}>Keystone</span>
             </button>
             <button
               onClick={() => setEditorMode("focus")}
-              type="button"
-              className={editorMode === "focus" ? "active focus" : ""}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                editorMode === "focus"
+                  ? "bg-purple-500/20 text-purple-400 shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
@@ -3201,21 +2975,24 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {editorMode === "keystone" && (
             <button
               onClick={() => setReadOnlyMode(!readOnlyMode)}
-              type="button"
-              className={`qw-rw-btn ${readOnlyMode ? "ro" : ""}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 border ${
+                readOnlyMode
+                  ? "bg-amber-900/40 border-amber-500/40 text-amber-300"
+                  : "bg-emerald-900/30 border-emerald-500/30 text-emerald-300"
+              }`}
               title={readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files"}
               data-testid="button-toggle-read-write"
             >
               {readOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              <span>{readOnlyMode ? "Read only" : "Read & write"}</span>
+              <span>{readOnlyMode ? "Read-Only" : "Read & Write"}</span>
             </button>
           )}
         </div>
-        <div className="qw-provider-row">
-          <Sparkles className="w-3 h-3" style={{ color: "#f5a524" }} />
+        <div className="flex gap-2 items-center text-xs">
+          <Sparkles className="w-3 h-3 text-muted-foreground" />
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-              <SelectTrigger className="qw-select h-7 w-24 text-xs" data-testid="select-provider">
+              <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
               <SelectContent>
@@ -3224,13 +3001,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Select>
           )}
           {providers.length <= 1 && (
-            <span className="qw-provider-pill">
-              <span className="spark" style={{ color: "#f5a524" }}>◆</span>
+            <span className="text-xs text-muted-foreground">
               {providers[0]?.name || (detectedProvider ? detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1) : "AI")}
             </span>
           )}
           <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="qw-select flex-1 h-7 text-xs" data-testid="select-model">
+            <SelectTrigger className="flex-1 h-7 bg-muted border-border text-xs" data-testid="select-model">
               <SelectValue placeholder={isLoadingModels ? "Loading..." : "Auto"} />
             </SelectTrigger>
             <SelectContent>
@@ -3242,24 +3018,25 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </Select>
           {providers.length === 0 && !isLoadingModels && (
             <Link href="/dashboard">
-              <button className="qw-tool-btn amber">
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300">
                 <Settings className="w-3 h-3 mr-1" />
                 Add Key
-              </button>
+              </Button>
             </Link>
           )}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={resetContext}
             disabled={isResettingContext || messages.length === 0}
-            className="qw-tool-btn"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             data-testid="button-reset-context"
             title="Refresh LLM context (keeps chat history visible)"
           >
             {isResettingContext ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          </button>
+          </Button>
         </div>
-        <div className="qw-ta-row">
+        <div className="flex gap-2">
           <Textarea
             ref={textareaRef}
             defaultValue=""
@@ -3269,65 +3046,61 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 sendMessage();
               }
             }}
-            placeholder={hasPendingReview ? "Review pending changes first…" : editorMode === "focus" ? "Ask about docs, specs, architecture…" : readOnlyMode ? "Ask about code, architecture, how to run…" : "Instruct the agent… files, tools, and runtime stay in scope."}
-            className={`qw-ta ${hasPendingReview ? "opacity-50" : ""}`}
+            placeholder={hasPendingReview ? "Review pending changes first..." : editorMode === "focus" ? "Ask about docs, specs, architecture..." : readOnlyMode ? "Ask about code, architecture, how to run..." : "Ask the AI for help..."}
+            className={`resize-none bg-muted border-border text-foreground min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`}
+            rows={1}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
           />
           {isSendingMessage ? (
-            <button
+            <Button
               onClick={stopStream}
-              className="qw-send err"
+              className="bg-red-600 hover:bg-red-700 h-auto px-3"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
               <Square className="w-4 h-4" />
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className={`qw-send ${hasPendingReview ? "disabled" : ""}`}
+              className="bg-indigo-600 hover:bg-indigo-700 h-auto px-3"
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
               <Send className="w-4 h-4" />
-            </button>
+            </Button>
           )}
-        </div>
         </div>
       </div>
     </div>
   );
-
   if (isMobile) {
-    const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
-    if (!portalTarget) return null;
-    return createPortal(
-      <div className="qw-shell flex flex-col" style={{ height: "100vh", width: "100vw", minHeight: 0 }}>
-        <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 relative z-10 gap-2">
+    return (
+      <div className="keystone-2027 bg-background flex flex-col" style={{ height: "100dvh" }}>
+        <header className="glass-header flex-shrink-0 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
+          <div className="flex items-center justify-between px-3 py-2 relative z-10">
             <div className="flex items-center gap-2 min-w-0">
-              <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-white/5 rounded-lg" data-testid="link-back-portal-mobile">
+              <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted/50 rounded" data-testid="link-back-portal-mobile">
                 <ChevronLeft className="w-5 h-5" />
               </Link>
-              <div className="qw-mark qw-mark-sm" aria-hidden="true"><span>K</span></div>
-              <div className="min-w-0">
-                <div className="qw-kicker !text-[9px]">KeyStone</div>
-                <h1 className="text-sm ace-text-shimmer qw-env-title truncate">{environment.name}</h1>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <img src={aiasLogo} alt="AiAS" className="w-5 h-5 flex-shrink-0" />
+                <h1 className="text-base font-semibold ace-text-shimmer truncate">{environment.name}</h1>
               </div>
             </div>
             <div className="flex items-center gap-1">
               {runtimeSessionId && (
-                <span className="qw-chip !h-6 !text-[9px] !px-2" data-testid="badge-session-mobile">
-                  <span className="qw-dot" />
-                  {runtimeSessionId.slice(0, 6)}
+                <span className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded" data-testid="badge-session-mobile">
+                  RT:{runtimeSessionId.slice(0, 6)}
                 </span>
               )}
-              <Button variant="outline" size="sm" className={`h-8 px-2.5 gap-1.5 text-xs border transition-colors ${showMobileMore ? "border-[var(--qw-emerald)]/50 text-[var(--qw-emerald)] bg-[var(--qw-emerald-dim)]" : "border-[var(--qw-line-strong)] text-muted-foreground hover:bg-white/5"}`} onClick={() => setShowMobileMore(!showMobileMore)} data-testid="button-mobile-more">
+              <Button variant="outline" size="sm" className={`h-8 px-2.5 gap-1.5 text-xs border transition-colors ${showMobileMore ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/10" : "border-indigo-500/30 text-indigo-300 bg-indigo-500/5 hover:bg-indigo-500/10"}`} onClick={() => setShowMobileMore(!showMobileMore)} data-testid="button-mobile-more">
                 {showMobileMore ? <ChevronUp className="w-4 h-4" /> : <MoreHorizontal className="w-4 h-4" />}
                 More
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--qw-emerald)] animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
               </Button>
             </div>
           </div>
@@ -3356,7 +3129,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </motion.div>
           )}
         </header>
-
         <div className="flex-1 overflow-hidden">
           <AnimatePresence mode="wait">
             {mobileTab === "files" && (
@@ -3404,13 +3176,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                       )}
                     </div>
                   </ScrollArea>
-                  <div className="qw-gex-dock">
-                    <div className="qw-gex-label">_Gex · surgical debug</div>
+                  <div className="p-2 border-t border-border">
                     <button
                       onClick={() => runGex(selectedFile || undefined)}
                       disabled={gexRunning || isSendingMessage || hasPendingReview}
-                      className={`qw-gex-btn ${
-                        gexRunning ? "qw-gex-running" : hasPendingReview ? "qw-gex-blocked" : ""
+                      className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                        gexRunning
+                          ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
+                          : hasPendingReview
+                          ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
+                          : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 active:scale-[0.97]"
                       }`}
                       data-testid="button-gex-debug-mobile"
                     >
@@ -3495,8 +3270,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             )}
           </AnimatePresence>
         </div>
-
-        <nav className="border-t border-[var(--qw-line)] bg-[var(--qw-ink)]/90 backdrop-blur-sm flex-shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        <nav className="border-t border-border bg-background/80 backdrop-blur-sm flex-shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             {[
               { key: "files" as const, icon: Folder, label: "Files" },
@@ -3508,7 +3282,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 key={key}
                 onClick={() => { setMobileTab(key); if (key === "chat") setActiveTab("chat"); }}
                 className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors relative ${
-                  mobileTab === key ? "qw-mobile-nav-active text-[var(--qw-emerald)]" : "text-muted-foreground"
+                  mobileTab === key ? "text-indigo-400" : "text-muted-foreground"
                 }`}
                 data-testid={`tab-${key}-mobile`}
               >
@@ -3519,7 +3293,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             ))}
           </div>
         </nav>
-
         <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
           <DialogContent className="bg-background border-border">
             <DialogHeader>
@@ -3541,7 +3314,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DialogContent>
         </Dialog>
-
         <Drawer open={mobileDrawer === "deploy"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3552,7 +3324,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
-
         <Drawer open={mobileDrawer === "ledger"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3563,7 +3334,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
-
         <Drawer open={mobileDrawer === "artifacts"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3600,7 +3370,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
-
         <Drawer open={mobileDrawer === "settings"} onOpenChange={(open) => { if (!open) setMobileDrawer(null); }}>
           <DrawerContent className="max-h-[85dvh]">
             <DrawerHeader className="pb-2">
@@ -3611,87 +3380,74 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </DrawerContent>
         </Drawer>
-      </div>,
-      portalTarget
+      </div>
     );
   }
-
-  const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
-
-  if (!portalTarget) return null;
-  return createPortal(
-    <div className="qw-shell flex flex-col" style={{ height: "100vh", width: "100vw", minHeight: 0 }}>
-      <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 relative z-10 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-white/5 rounded-lg" data-testid="link-back-portal">
+  return (
+    <div className="keystone-2027 h-screen w-screen max-w-[100vw] bg-background flex flex-col">
+      <header className="glass-header flex-shrink-0 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
+        <div className="flex items-center justify-between px-4 py-2 relative z-10">
+          <div className="flex items-center gap-3">
+            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted/50 rounded" data-testid="link-back-portal">
               <ChevronLeft className="w-5 h-5" />
             </Link>
-            <div className="qw-mark" aria-hidden="true"><span>K</span></div>
-            <div className="min-w-0">
-              <div className="qw-kicker">KeyStone · AiAssist Secure</div>
-              <h1 className="text-lg ace-text-shimmer qw-env-title truncate" data-testid="text-env-name">{environment.name}</h1>
+            <div className="flex items-center gap-2">
+              <img src={aiasLogo} alt="AiAS" className="w-6 h-6" />
+              <h1 className="text-lg font-semibold ace-text-shimmer" data-testid="text-env-name">{environment.name}</h1>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-2">
             {runtimeSessionId && (
-              <span className="qw-chip" data-testid="badge-runtime-session">
-                <span className="qw-dot" />
-                runtime {runtimeSessionId.slice(0, 8)}
+              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded flex items-center gap-1.5" data-testid="badge-runtime-session">
+                <Zap className="w-3 h-3 text-emerald-400" />
+                Runtime: {runtimeSessionId.slice(0, 8)}
               </span>
             )}
             {runtimeLoading && (
-              <span className="qw-chip">
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" />Connecting...
               </span>
             )}
-            {environment.llm_provider && (
-              <span className="qw-chip qw-cool" data-testid="badge-provider">
-                <span className="qw-dot" />
-                {environment.llm_provider}{environment.llm_model ? ` · ${environment.llm_model}` : ""}
-              </span>
+            {!runtimeSessionId && !runtimeLoading && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2 gap-1"
+                onClick={initRuntimeSession}
+                data-testid="button-init-runtime"
+              >
+                <Zap className="w-3 h-3" />
+                {runtimeError ? "Retry Runtime" : "Init Runtime"}
+              </Button>
             )}
-            {pendingPatchCount > 0 && (
-              <span className="qw-chip qw-warn">
-                <span className="qw-dot" />
-                {pendingPatchCount} pending patch{pendingPatchCount > 1 ? "es" : ""}
+            {environment.llm_provider && (
+              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded" data-testid="badge-provider">
+                {environment.llm_provider}
               </span>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground h-8 w-8"
+              className="text-muted-foreground"
               title="Download all files as ZIP"
               onClick={() => window.open(`/api/keystone/environments/${envId}/files/download-all`, "_blank")}
               data-testid="button-download-all"
             >
               <FolderArchive className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className={`text-muted-foreground h-8 w-8 ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
+            <Button variant="ghost" size="icon" className={`text-muted-foreground ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
               <Settings className="w-4 h-4" />
             </Button>
-            {!runtimeSessionId && !runtimeLoading && (
-              <Button
-                size="sm"
-                className="h-8 text-xs px-3 gap-1.5 qw-btn-primary"
-                onClick={initRuntimeSession}
-                data-testid="button-init-runtime"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                {runtimeError ? "Retry Runtime" : "Init Runtime"}
-              </Button>
-            )}
           </div>
         </div>
       </header>
-
-      <div className="flex-1 overflow-hidden min-h-0">
-        <ResizablePanelGroup direction="horizontal">
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="keystone-panels min-h-0">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-            <div className="h-full flex flex-col bg-[var(--qw-panel)]/80 border-r border-[var(--qw-line)]">
-              <div className="p-3 border-b border-[var(--qw-line)] flex items-center justify-between">
-                <span className="qw-panel-head">Files</span>
+            <div className="keystone-files-panel h-full flex flex-col bg-background/50 border-r border-border">
+              <div className="p-3 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">Files</span>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setShowFileSearch(!showFileSearch)} title="Search in files" data-testid="button-toggle-search">
                     <Search className="w-3.5 h-3.5" />
@@ -3728,7 +3484,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </Button>
                 </div>
               </div>
-
               {showFileSearch && (
                 <div className="p-2 border-b border-border">
                   <div className="flex gap-1">
@@ -3764,7 +3519,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   )}
                 </div>
               )}
-
               <ScrollArea className="flex-1">
                 <div className="p-2">
                   {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
@@ -3772,19 +3526,16 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   )}
                 </div>
               </ScrollArea>
-
-              <div className="qw-gex-dock">
-                <div className="qw-gex-label">_Gex · surgical debug</div>
-                <p className="text-xs text-muted-foreground mb-2.5">
-                  {selectedFile
-                    ? <>Target <span className="text-red-200 font-semibold">{selectedFile.split("/").pop()}</span>. Scan, patch, review diffs in-place.</>
-                    : "Pick a file to target, or scan the whole environment."}
-                </p>
+              <div className="p-2 border-t border-border">
                 <button
                   onClick={() => runGex(selectedFile || undefined)}
                   disabled={gexRunning || isSendingMessage || hasPendingReview}
-                  className={`qw-gex-btn ${
-                    gexRunning ? "qw-gex-running" : hasPendingReview ? "qw-gex-blocked" : ""
+                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    gexRunning
+                      ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
+                      : hasPendingReview
+                      ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 hover:shadow-red-800/40 active:scale-[0.97]"
                   }`}
                   data-testid="button-gex-debug"
                 >
@@ -3793,14 +3544,17 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     : <><ScanSearch className="w-4 h-4" />Debug w/ _Gex</>
                   }
                 </button>
+                {selectedFile && !gexRunning && (
+                  <div className="text-[10px] text-muted-foreground text-center mt-1 truncate">
+                    Target: {selectedFile}
+                  </div>
+                )}
               </div>
             </div>
           </ResizablePanel>
-
           <ResizableHandle />
-
           <ResizablePanel defaultSize={45}>
-            <div className="h-full flex flex-col bg-[var(--qw-ink)]">
+            <div className="keystone-editor-panel h-full flex flex-col bg-background">
               {openTabs.length > 0 ? (
                 <>
                   <div className="border-b border-border bg-background/80 flex flex-col">
@@ -3815,7 +3569,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                           <div
                             key={tab}
                             className={`group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${
-                              isActive ? "qw-tab-active bg-[var(--qw-ink)] text-foreground border-b-2 border-b-[var(--qw-emerald)]" : "bg-white/[0.02] text-muted-foreground hover:bg-white/[0.04]"
+                              isActive ? "bg-background text-foreground border-b-2 border-b-indigo-500" : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
                             } ${isGexMod && !isAccepted ? "border-t-2 border-t-red-500" : ""} ${isAccepted ? "border-t-2 border-t-green-500" : ""}`}
                             onClick={() => switchTab(tab)}
                             data-testid={`tab-${tab}`}
@@ -4006,69 +3760,69 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </div>
                 </>
               ) : (
-                <div className="qw-editor-empty">
-                  <div className="qw-editor-empty-inner">
-                    <div className="qw-editor-empty-mark" aria-hidden="true"><span>K</span></div>
-                    <div className="qw-editor-empty-title">Select a file to edit</div>
-                    <p className="qw-editor-empty-sub">Open something from the tree, import an artifact, or ask the agent to scaffold it.</p>
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <Code2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>Select a file to edit</p>
                   </div>
                 </div>
               )}
             </div>
           </ResizablePanel>
-
           <ResizableHandle />
-
-          <ResizablePanel defaultSize={38} minSize={28}>
-            <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0 flex-1" style={{ height: "100%", minHeight: 0, flex: "1 1 0%", display: "flex", flexDirection: "column" }}>
-                <TabsList className="qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full">
-                  <TabsTrigger value="chat" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-chat">
-                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
-                    {messages.length > 0 && <span className="qw-tab-count ml-1.5">{messages.length}</span>}
+          <ResizablePanel defaultSize={35} minSize={25}>
+            <div className="keystone-agent-rail h-full min-h-0 flex flex-col bg-background/50 min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
+                <TabsList className="keystone-agent-tabs border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
+                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
                   </TabsTrigger>
-                  <TabsTrigger value="terminal" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-terminal">
-                    <Terminal className="w-3.5 h-3.5 mr-1.5" />Terminal
+                  {isEnterprise && (
+                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
+                      <Terminal className="w-3.5 h-3.5 mr-1" />Terminal
+                    </TabsTrigger>
+                  )}
+                  {isEnterprise && (
+                    <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-deploy">
+                      <Rocket className="w-3.5 h-3.5 mr-1" />Manage
+                    </TabsTrigger>
+                  )}
+                  {isEnterprise && (
+                    <TabsTrigger value="ledger" className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-ledger">
+                      <ScrollText className="w-3.5 h-3.5 mr-1" />Ledger
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="artifacts" className="rounded-none border-b-2 border-transparent data-[state=active]:border-violet-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-artifacts">
+                    <Package className="w-3.5 h-3.5 mr-1" />Artifacts
+                    {ksArtifacts.length > 0 && <span className="ml-1 bg-violet-500/20 text-violet-300 text-[10px] px-1.5 rounded-full">{ksArtifacts.length}</span>}
                   </TabsTrigger>
-                  <TabsTrigger value="deploy" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-deploy">
-                    <Rocket className="w-3.5 h-3.5 mr-1.5" />Manage
-                  </TabsTrigger>
-                  <TabsTrigger value="ledger" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-amber)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-ledger">
-                    <ScrollText className="w-3.5 h-3.5 mr-1.5" />Ledger
-                  </TabsTrigger>
-                  <TabsTrigger value="artifacts" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-violet)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-artifacts">
-                    <Package className="w-3.5 h-3.5 mr-1.5" />Artifacts
-                    {ksArtifacts.length > 0 && <span className="qw-tab-count ml-1.5">{ksArtifacts.length}</span>}
-                  </TabsTrigger>
-                  <TabsTrigger value="settings" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-orange-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-settings">
-                    <Settings className="w-3.5 h-3.5 mr-1.5" />Settings
+                  <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-settings">
+                    <Settings className="w-3.5 h-3.5 mr-1" />Settings
                   </TabsTrigger>
                 </TabsList>
-
-                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", margin: 0 }}>
+                  <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
                     {renderChatPanel()}
                   </TabsContent>
-
-                  <TabsContent value="terminal" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    {renderTerminalTab()}
-                  </TabsContent>
-
-                  <TabsContent value="deploy" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    {renderDeployTab()}
-                  </TabsContent>
-
-                  <TabsContent value="ledger" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    {renderLedgerTab()}
-                  </TabsContent>
-
-                  <TabsContent value="artifacts" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    <div className="p-4 space-y-3 overflow-y-auto flex-1 min-h-0 qw-panel-body" style={{ flex: "1 1 0%", minHeight: 0 }} data-testid="panel-artifacts-ks">
-                      <div className="flex items-center justify-between mb-1">
-                        <div>
-                          <div className="qw-panel-kicker">Artifacts</div>
-                          <h3 className="text-sm font-semibold text-foreground">Saved from Playground</h3>
-                        </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={loadKsArtifacts} title="Refresh">
+                  {isEnterprise && (
+                    <TabsContent value="terminal" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderTerminalTab()}
+                    </TabsContent>
+                  )}
+                  {isEnterprise && (
+                    <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderDeployTab()}
+                    </TabsContent>
+                  )}
+                  {isEnterprise && (
+                    <TabsContent value="ledger" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderLedgerTab()}
+                    </TabsContent>
+                  )}
+                  <TabsContent value="artifacts" className="flex-1 flex flex-col m-0 overflow-hidden">
+                    <div className="p-4 space-y-3 overflow-y-auto flex-1" data-testid="panel-artifacts-ks">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-foreground">Saved Artifacts</h3>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadKsArtifacts} title="Refresh">
                           <RefreshCw className="w-3.5 h-3.5" />
                         </Button>
                       </div>
@@ -4077,15 +3831,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                           <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
                         </div>
                       ) : ksArtifacts.length === 0 ? (
-                        <div className="qw-panel-empty">
-                          <div className="qw-panel-empty-icon"><Package className="w-6 h-6" /></div>
-                          <p className="qw-panel-empty-title">No artifacts yet</p>
-                          <p className="qw-panel-empty-sub">Save code from Playground to import it here.</p>
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          <Package className="w-7 h-7 mx-auto mb-2 opacity-50" />
+                          <p>No artifacts yet</p>
+                          <p className="text-xs mt-1 opacity-60">Save code from Playground to see them here</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
                           {ksArtifacts.map((artifact) => (
-                            <div key={artifact.id} className="qw-artifact-card group">
+                            <div key={artifact.id} className="bg-muted/30 border border-border rounded-lg p-3 group hover:border-violet-500/30 transition-colors">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   {renamingKsArtifactId === artifact.id ? (
@@ -4125,8 +3879,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                       )}
                     </div>
                   </TabsContent>
-
-                  <TabsContent value="settings" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <TabsContent value="settings" className="flex-1 flex flex-col m-0 overflow-hidden">
                     {renderSettingsContent()}
                   </TabsContent>
               </Tabs>
@@ -4134,19 +3887,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-
-      <footer className="qw-provenance">
-        <span className="qw-own">Ownership · every layer</span>
-        <span>
-          session <b>{runtimeSessionId ? runtimeSessionId.slice(0, 8) : "—"}</b>
-          {" · "}
-          {environment.llm_provider || "provider"}
-          {" · "}
-          patches <b>{pendingPatchCount}</b>
-        </span>
-        <span>AiAssist Secure · KeyStone</span>
-      </footer>
-    </div>,
-    portalTarget
+    </div>
   );
 }
