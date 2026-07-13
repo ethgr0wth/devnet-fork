@@ -108725,6 +108725,7 @@ ${example}` : example),
     const [collapsedDiffs, setCollapsedDiffs] = (0, import_react69.useState)(/* @__PURE__ */ new Set());
     const diffContentListenerRef = (0, import_react69.useRef)(null);
     const sessionMessageIds = (0, import_react69.useRef)(/* @__PURE__ */ new Set());
+    const pendingPatchCount = gexModifiedFiles.filter((f) => !gexPatchAccepted.has(f)).length;
     const hasPendingReview = (0, import_react69.useMemo)(() => {
       const lastAssistant = [...messages2].reverse().find((m) => m.role === "assistant" && m.content);
       if (!lastAssistant) return false;

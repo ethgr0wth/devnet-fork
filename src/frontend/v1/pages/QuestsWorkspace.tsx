@@ -578,6 +578,8 @@ export default function QuestsWorkspace() {
   const diffContentListenerRef = useRef<{ dispose: () => void } | null>(null);
   const sessionMessageIds = useRef<Set<string>>(new Set());
 
+  const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
+
   const hasPendingReview = useMemo(() => {
     const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
     if (!lastAssistant) return false;
