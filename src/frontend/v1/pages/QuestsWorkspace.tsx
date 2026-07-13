@@ -2034,7 +2034,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           onClick={() => loadFile(node.path)}
           onDoubleClick={(e) => { e.preventDefault(); startRename(node.path, node.name); }}
           className={`flex items-center gap-2 w-full px-2 py-1 text-left text-sm hover:bg-muted/50 rounded transition-colors ${
-            isSelected ? "bg-indigo-600/20 text-indigo-300" : ""
+            isSelected ? "qw-file-active text-foreground" : ""
           } ${isGexModified && !isGexAccepted ? "ring-1 ring-red-500/40" : ""} ${isGexAccepted ? "ring-1 ring-green-500/30" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           data-testid={`file-${node.path}`}
@@ -2121,26 +2121,25 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
           <div className="text-center relative z-10 flex flex-col items-center">
             <div className="relative mb-4">
-              <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-xl" style={{ animation: "ksPulseRing 2s ease-in-out infinite" }} />
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center backdrop-blur-sm relative">
-                <Code2 className="w-7 h-7 text-indigo-400" style={{ filter: "drop-shadow(0 0 8px rgba(99,102,241,0.5))" }} />
+              <div className="absolute inset-0 rounded-full bg-emerald-500/20 blur-xl" style={{ animation: "ksPulseRing 2s ease-in-out infinite" }} />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/25 to-amber-500/15 border border-white/10 flex items-center justify-center backdrop-blur-sm relative shadow-[0_0_24px_rgba(18,212,138,0.25)]">
+                <span className="font-[family-name:var(--qw-font-display)] text-lg font-extrabold bg-gradient-to-br from-white to-emerald-400 bg-clip-text text-transparent">K</span>
               </div>
             </div>
             <div className="flex items-baseline gap-0 mb-1">
-              <span className="text-[22px] font-bold tracking-tight bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent">Key</span>
-              <span className="text-[22px] font-light tracking-tight ks-shimmer">Stone</span>
+              <span className="text-[22px] font-bold tracking-tight bg-gradient-to-r from-white via-white/90 to-emerald-300/80 bg-clip-text text-transparent">Key</span><span className="text-[22px] font-light tracking-tight text-emerald-400/90">Stone</span>
             </div>
             <div className="flex items-center gap-2 mb-5">
-              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent" />
-              <span className="text-[10px] font-semibold tracking-[0.35em] uppercase ks-shimmer">IDE</span>
-              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+              <span className="text-[10px] font-semibold tracking-[0.35em] uppercase text-emerald-400/80">AiAssist Secure</span>
+              <div className="h-[1px] w-10 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
             </div>
             <div className="flex items-center gap-1.5 mb-5">
               <span className="text-[10px] text-white/25 tracking-wide">by</span>
               <img src={aiasLogo} alt="AiAS" className="w-4 h-4 rounded-sm opacity-40" />
               <span className="text-[10px] font-medium tracking-wider text-white/30">AiAS</span>
             </div>
-            <div className="w-5 h-5 border-2 border-white/15 border-t-indigo-400 rounded-full animate-spin mb-3" />
+            <div className="w-5 h-5 border-2 border-white/15 border-t-emerald-400 rounded-full animate-spin mb-3" />
             <span className="text-[11px] text-white/30">Loading environment...</span>
           </div>
         </div>
@@ -2738,21 +2737,73 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   };
 
   const renderChatPanel = (compact: boolean = false) => (
-    // Anchored to the nearest positioned ancestor (both call sites are
-    // `relative` with a definite height) so the chat column can never
-    // inherit a broken percentage chain — it always fills its tab exactly.
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
+    // Anchored to the nearest positioned ancestor. Every layout-critical
+    // property is set INLINE so the column fills its box even if a utility
+    // class is missing from the prebuilt stylesheet or a merge drops one:
+    // the desktop tab chain collapsed exactly this way (missing minHeight).
+    <div
+      className="absolute inset-0 flex flex-col overflow-hidden"
+      style={{
+        position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        minHeight: 0, height: "100%",
+        background: "linear-gradient(180deg, rgba(249,99,2,.04), transparent 140px)",
+      }}
+    >
+      <div
+        className="flex items-center justify-between border-b border-white/10"
+        style={{ flexShrink: 0, padding: "5px 12px", background: "rgba(0,0,0,.35)" }}
+        data-testid="chat-status-bar"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AI CONSOLE</span>
+          <span className="rounded-full flex-shrink-0" style={{ width: 6, height: 6, background: runtimeSessionId ? "#22c55e" : "#6b7280" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
+        </div>
+        <div className="flex items-center gap-3 font-mono text-muted-foreground" style={{ fontSize: 10, letterSpacing: "0.08em" }}>
+          <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
+          {editorMode === "keystone" && (
+            <span style={{ color: readOnlyMode ? "#fbbf24" : "#34d399" }}>{readOnlyMode ? "READ" : "R/W"}</span>
+          )}
+          <span data-testid="status-msg-count">{messages.length} MSG</span>
+        </div>
+      </div>
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+        style={{ flex: "1 1 0%", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}
       >
         <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">Start a conversation with your AI assistant</p>
-              <p className="text-xs mt-1">Ask for help with code, debugging, or building features</p>
+            <div className="py-10 px-4" data-testid="chat-empty-state">
+              <div className="max-w-sm mx-auto border border-white/10 rounded-sm overflow-hidden" style={{ background: "rgba(0,0,0,.3)" }}>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10" style={{ background: "rgba(249,99,2,.08)" }}>
+                  <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
+                  <span className="font-mono font-semibold" style={{ fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }}>AIOS // AI CONSOLE</span>
+                </div>
+                <div className="p-3">
+                  <p className="font-mono text-xs text-muted-foreground">Reads your files. Writes code. Applies edits in place.</p>
+                  <p className="font-mono text-muted-foreground mt-1" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.08em" }}>SELECT A COMMAND OR TYPE BELOW</p>
+                  <div className="mt-3 space-y-1">
+                    {[
+                      { k: "F1", label: "EXPLAIN THIS CODEBASE", fill: "Explain this codebase" },
+                      { k: "F2", label: "FIX A BUG", fill: "Fix a bug: " },
+                      { k: "F3", label: "BUILD A FEATURE", fill: "Build a feature: " },
+                    ].map((c) => (
+                      <button
+                        key={c.k}
+                        onClick={() => { if (textareaRef.current) { textareaRef.current.value = c.fill; textareaRef.current.focus(); } }}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-left"
+                        style={{ borderLeft: "2px solid #f96302" }}
+                        data-testid={`key-${c.k.toLowerCase()}`}
+                      >
+                        <span className="font-mono font-bold flex-shrink-0" style={{ fontSize: 10, color: "#ff8c1a" }}>{c.k}</span>
+                        <span className="font-mono text-foreground" style={{ fontSize: 11, letterSpacing: "0.06em" }}>{c.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             messages.map((msg) => {
@@ -2766,18 +2817,24 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   data-testid={`message-${msg.id}`}
                   data-role={msg.role}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    isUser ? "bg-indigo-600" : "bg-indigo-600/20"
-                  }`}>
-                    {isUser ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-indigo-400" />}
+                  <div
+                    className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0"
+                    style={isUser
+                      ? { background: "#f96302" }
+                      : { background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}
+                  >
+                    {isUser ? <User className="w-3.5 h-3.5 text-white" /> : <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />}
                   </div>
                   <div
-                    className={`rounded-lg px-4 py-2 min-w-0 overflow-hidden break-words ${
-                      isUser ? "bg-indigo-600 text-white" : "bg-muted text-foreground"
-                    }`}
-                    style={{ flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere" }}
+                    className="rounded-sm px-3 py-2 min-w-0 overflow-hidden break-words text-foreground"
+                    style={{
+                      flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere",
+                      background: isUser ? "rgba(249,99,2,.08)" : "rgba(255,255,255,.03)",
+                      border: "1px solid rgba(255,255,255,.06)",
+                      borderLeft: isUser ? "2px solid #f96302" : "2px solid rgba(255,140,26,.4)",
+                    }}
                   >
-                    <div className="text-[10px] opacity-50 mb-1">{isUser ? "You" : "AI"}</div>
+                    <div className="font-mono mb-1" style={{ fontSize: 9, letterSpacing: "0.16em", color: isUser ? "#ff8c1a" : "rgba(255,255,255,.4)" }}>{isUser ? "USR" : "AIOS"}</div>
                     {isUser ? (
                       <p className="text-sm break-words" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }}>{msg.content}</p>
                     ) : (() => {
@@ -3068,18 +3125,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               animate={{ opacity: 1, y: 0 }}
               className="flex gap-3"
             >
-              <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-indigo-400" />
+              <div className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0" style={{ background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }}>
+                <Bot className="w-3.5 h-3.5" style={{ color: "#ff8c1a" }} />
               </div>
-              <div className="bg-muted rounded-lg px-4 py-3">
+              <div className="rounded-sm px-3 py-2" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderLeft: "2px solid #f96302" }}>
                 <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-                  <span className="text-sm text-muted-foreground">Generating...</span>
-                </div>
-                <div className="flex gap-1 mt-2">
-                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#ff8c1a" }} />
+                  <span className="font-mono text-xs text-muted-foreground" style={{ letterSpacing: "0.1em" }}>PROCESSING…</span>
                 </div>
               </div>
             </motion.div>
@@ -3093,7 +3145,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <Button
             size="sm"
             variant="outline"
-            className="rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg"
+            className="rounded-sm h-7 w-7 p-0 shadow-lg"
+            style={{ background: "rgba(0,0,0,.7)", border: "1px solid rgba(249,99,2,.5)", color: "#ff8c1a" }}
             onClick={scrollToBottom}
             data-testid="button-scroll-to-bottom"
           >
@@ -3102,7 +3155,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`}>
+      <div className={`${compact ? "p-2.5" : "p-3"} border-t border-white/10 space-y-2`} style={{ flexShrink: 0, background: "rgba(0,0,0,.35)" }}>
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3113,50 +3166,50 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
         )}
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit ace-glow-border">
+          <div className="flex items-center w-fit rounded-sm border border-white/10 overflow-hidden" style={{ background: "rgba(0,0,0,.4)" }}>
             <button
               onClick={() => setEditorMode("keystone")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                editorMode === "keystone"
-                  ? "bg-gradient-to-r from-cyan-500/15 via-violet-500/15 to-pink-500/15 shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
+                editorMode === "keystone" ? "" : "text-muted-foreground hover:text-foreground"
               }`}
+              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "keystone" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
               title="Keystone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
-              <Code2 className="w-3 h-3 inline mr-1" /><span className={editorMode === "keystone" ? "ace-text-shimmer" : ""}>Keystone</span>
+              <Code2 className="w-3 h-3 inline mr-1" />KEYSTONE
             </button>
             <button
               onClick={() => setEditorMode("focus")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                editorMode === "focus"
-                  ? "bg-purple-500/20 text-purple-400 shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+              className={`px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${
+                editorMode === "focus" ? "" : "text-muted-foreground hover:text-foreground"
               }`}
+              style={{ fontSize: 10, letterSpacing: "0.1em", ...(editorMode === "focus" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {}) }}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
-              <FileText className="w-3 h-3 inline mr-1" />Focus
+              <FileText className="w-3 h-3 inline mr-1" />FOCUS
             </button>
           </div>
           {editorMode === "keystone" && (
             <button
               onClick={() => setReadOnlyMode(!readOnlyMode)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 border ${
-                readOnlyMode
-                  ? "bg-amber-900/40 border-amber-500/40 text-amber-300"
-                  : "bg-emerald-900/30 border-emerald-500/30 text-emerald-300"
-              }`}
+              className="flex items-center gap-1.5 px-2.5 py-1 font-mono font-semibold rounded-sm transition-all duration-200 border"
+              style={{
+                fontSize: 10, letterSpacing: "0.1em",
+                ...(readOnlyMode
+                  ? { background: "rgba(251,191,36,.08)", borderColor: "rgba(251,191,36,.4)", color: "#fbbf24" }
+                  : { background: "rgba(52,211,153,.08)", borderColor: "rgba(52,211,153,.35)", color: "#34d399" }),
+              }}
               title={readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files"}
               data-testid="button-toggle-read-write"
             >
               {readOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              <span>{readOnlyMode ? "Read-Only" : "Read & Write"}</span>
+              <span>{readOnlyMode ? "READ-ONLY" : "READ & WRITE"}</span>
             </button>
           )}
         </div>
         <div className="flex gap-2 items-center text-xs">
-          <Sparkles className="w-3 h-3 text-muted-foreground" />
+          <Sparkles className="w-3 h-3" style={{ color: "#ff8c1a" }} />
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
               <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
@@ -3213,8 +3266,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 sendMessage();
               }
             }}
-            placeholder={hasPendingReview ? "Review pending changes first..." : editorMode === "focus" ? "Ask about docs, specs, architecture..." : readOnlyMode ? "Ask about code, architecture, how to run..." : "Ask the AI for help..."}
-            className={`resize-none bg-muted border-border text-foreground min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`}
+            placeholder={hasPendingReview ? "> review pending changes first" : editorMode === "focus" ? "> ask about docs, specs, architecture" : readOnlyMode ? "> ask about code, architecture, how to run" : "> ask, build, fix\u2026"}
+            className={`resize-none font-mono text-foreground min-h-[40px] max-h-24 text-sm rounded-sm ${hasPendingReview ? "opacity-50" : ""}`}
+            style={{ background: "rgba(0,0,0,.4)", borderColor: "rgba(255,255,255,.12)" }}
             rows={1}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
@@ -3222,7 +3276,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {isSendingMessage ? (
             <Button
               onClick={stopStream}
-              className="bg-red-600 hover:bg-red-700 h-auto px-3"
+              className="bg-red-600 hover:bg-red-700 h-auto px-3 rounded-sm"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
@@ -3232,7 +3286,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             <Button
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className="bg-indigo-600 hover:bg-indigo-700 h-auto px-3"
+              className={`h-auto px-3 rounded-sm ${hasPendingReview ? "opacity-50" : "qw-send"}`}
+              style={{ background: hasPendingReview ? "rgba(18,212,138,.25)" : undefined }}
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
@@ -3245,30 +3300,32 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   );
 
   if (isMobile) {
+    const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
     return (
-      <div className="bg-background flex flex-col h-full min-h-0">
-        <header className="glass-header flex-shrink-0 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
-          <div className="flex items-center justify-between px-3 py-2 relative z-10">
+      <div className="qw-shell flex flex-col h-full min-h-0">
+        <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 relative z-10 gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-muted/50 rounded" data-testid="link-back-portal-mobile">
+              <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-1.5 hover:bg-white/5 rounded-lg" data-testid="link-back-portal-mobile">
                 <ChevronLeft className="w-5 h-5" />
               </Link>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <img src={aiasLogo} alt="AiAS" className="w-5 h-5 flex-shrink-0" />
-                <h1 className="text-base font-semibold ace-text-shimmer truncate">{environment.name}</h1>
+              <div className="qw-mark qw-mark-sm" aria-hidden="true"><span>K</span></div>
+              <div className="min-w-0">
+                <div className="qw-kicker !text-[9px]">KeyStone</div>
+                <h1 className="text-sm ace-text-shimmer qw-env-title truncate">{environment.name}</h1>
               </div>
             </div>
             <div className="flex items-center gap-1">
               {runtimeSessionId && (
-                <span className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded" data-testid="badge-session-mobile">
-                  RT:{runtimeSessionId.slice(0, 6)}
+                <span className="qw-chip !h-6 !text-[9px] !px-2" data-testid="badge-session-mobile">
+                  <span className="qw-dot" />
+                  {runtimeSessionId.slice(0, 6)}
                 </span>
               )}
-              <Button variant="outline" size="sm" className={`h-8 px-2.5 gap-1.5 text-xs border transition-colors ${showMobileMore ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/10" : "border-indigo-500/30 text-indigo-300 bg-indigo-500/5 hover:bg-indigo-500/10"}`} onClick={() => setShowMobileMore(!showMobileMore)} data-testid="button-mobile-more">
+              <Button variant="outline" size="sm" className={`h-8 px-2.5 gap-1.5 text-xs border transition-colors ${showMobileMore ? "border-[var(--qw-emerald)]/50 text-[var(--qw-emerald)] bg-[var(--qw-emerald-dim)]" : "border-[var(--qw-line-strong)] text-muted-foreground hover:bg-white/5"}`} onClick={() => setShowMobileMore(!showMobileMore)} data-testid="button-mobile-more">
                 {showMobileMore ? <ChevronUp className="w-4 h-4" /> : <MoreHorizontal className="w-4 h-4" />}
                 More
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--qw-emerald)] animate-pulse" />
               </Button>
             </div>
           </div>
@@ -3345,16 +3402,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                       )}
                     </div>
                   </ScrollArea>
-                  <div className="p-2 border-t border-border">
+                  <div className="qw-gex-dock">
+                    <div className="qw-gex-label">_Gex · surgical debug</div>
                     <button
                       onClick={() => runGex(selectedFile || undefined)}
                       disabled={gexRunning || isSendingMessage || hasPendingReview}
-                      className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                        gexRunning
-                          ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
-                          : hasPendingReview
-                          ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
-                          : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 active:scale-[0.97]"
+                      className={`qw-gex-btn ${
+                        gexRunning ? "qw-gex-running" : hasPendingReview ? "qw-gex-blocked" : ""
                       }`}
                       data-testid="button-gex-debug-mobile"
                     >
@@ -3440,7 +3494,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </AnimatePresence>
         </div>
 
-        <nav className="border-t border-border bg-background/80 backdrop-blur-sm flex-shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        <nav className="border-t border-[var(--qw-line)] bg-[var(--qw-ink)]/90 backdrop-blur-sm flex-shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <div className="flex">
             {[
               { key: "files" as const, icon: Folder, label: "Files" },
@@ -3452,7 +3506,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 key={key}
                 onClick={() => { setMobileTab(key); if (key === "chat") setActiveTab("chat"); }}
                 className={`flex-1 flex flex-col items-center gap-1 py-2.5 transition-colors relative ${
-                  mobileTab === key ? "text-indigo-400" : "text-muted-foreground"
+                  mobileTab === key ? "qw-mobile-nav-active text-[var(--qw-emerald)]" : "text-muted-foreground"
                 }`}
                 data-testid={`tab-${key}-mobile`}
               >
@@ -3559,73 +3613,103 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     );
   }
 
+  const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
+
   return (
-    <div className="h-full w-full bg-background flex flex-col min-h-0">
-      <header className="glass-header flex-shrink-0 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
-        <div className="flex items-center justify-between px-4 py-2 relative z-10">
-          <div className="flex items-center gap-3">
-            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted/50 rounded" data-testid="link-back-portal">
+    <div className="h-full w-full qw-shell flex flex-col min-h-0">
+      <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 relative z-10 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-white/5 rounded-lg" data-testid="link-back-portal">
               <ChevronLeft className="w-5 h-5" />
             </Link>
-            <div className="flex items-center gap-2">
-              <img src={aiasLogo} alt="AiAS" className="w-6 h-6" />
-              <h1 className="text-lg font-semibold ace-text-shimmer" data-testid="text-env-name">{environment.name}</h1>
+            <div className="qw-mark" aria-hidden="true"><span>K</span></div>
+            <div className="min-w-0">
+              <div className="qw-kicker">KeyStone · AiAssist Secure</div>
+              <h1 className="text-lg ace-text-shimmer qw-env-title truncate" data-testid="text-env-name">{environment.name}</h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {runtimeSessionId && (
-              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded flex items-center gap-1.5" data-testid="badge-runtime-session">
-                <Zap className="w-3 h-3 text-emerald-400" />
-                Runtime: {runtimeSessionId.slice(0, 8)}
+              <span className="qw-chip" data-testid="badge-runtime-session">
+                <span className="qw-dot" />
+                runtime {runtimeSessionId.slice(0, 8)}
               </span>
             )}
             {runtimeLoading && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <span className="qw-chip">
                 <Loader2 className="w-3 h-3 animate-spin" />Connecting...
               </span>
             )}
-            {!runtimeSessionId && !runtimeLoading && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-[10px] px-2 gap-1"
-                onClick={initRuntimeSession}
-                data-testid="button-init-runtime"
-              >
-                <Zap className="w-3 h-3" />
-                {runtimeError ? "Retry Runtime" : "Init Runtime"}
-              </Button>
-            )}
             {environment.llm_provider && (
-              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded" data-testid="badge-provider">
-                {environment.llm_provider}
+              <span className="qw-chip qw-cool" data-testid="badge-provider">
+                <span className="qw-dot" />
+                {environment.llm_provider}{environment.llm_model ? ` · ${environment.llm_model}` : ""}
+              </span>
+            )}
+            {pendingPatchCount > 0 && (
+              <span className="qw-chip qw-warn">
+                <span className="qw-dot" />
+                {pendingPatchCount} pending patch{pendingPatchCount > 1 ? "es" : ""}
               </span>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground"
+              className="text-muted-foreground h-8 w-8"
               title="Download all files as ZIP"
               onClick={() => window.open(`/api/keystone/environments/${envId}/files/download-all`, "_blank")}
               data-testid="button-download-all"
             >
               <FolderArchive className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className={`text-muted-foreground ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
+            <Button variant="ghost" size="icon" className={`text-muted-foreground h-8 w-8 ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
               <Settings className="w-4 h-4" />
             </Button>
+            {!runtimeSessionId && !runtimeLoading && (
+              <Button
+                size="sm"
+                className="h-8 text-xs px-3 gap-1.5 qw-btn-primary"
+                onClick={initRuntimeSession}
+                data-testid="button-init-runtime"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {runtimeError ? "Retry Runtime" : "Init Runtime"}
+              </Button>
+            )}
           </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="qw-command flex-shrink-0">
+        <div className="qw-command-input">
+          <Search className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Search files, symbols, tools… or ask the agent</span>
+          <kbd>⌘K</kbd>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="qw-seg" role="tablist" aria-label="Editor mode">
+            <button type="button" className={editorMode === "keystone" ? "qw-active" : ""} onClick={() => setEditorMode("keystone")}>KeyStone</button>
+            <button type="button" className={editorMode === "focus" ? "qw-active" : ""} onClick={() => setEditorMode("focus")}>Focus</button>
+          </div>
+          {pendingPatchCount > 0 && (
+            <Button size="sm" className="h-8 text-xs qw-btn-amber" onClick={() => {
+              const first = gexModifiedFiles.find(f => !gexPatchAccepted.has(f));
+              if (first) loadFile(first);
+            }}>
+              Review {pendingPatchCount} patch{pendingPatchCount > 1 ? "es" : ""}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-hidden min-h-0">
         <ResizablePanelGroup direction="horizontal">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-            <div className="h-full flex flex-col bg-background/50 border-r border-border">
-              <div className="p-3 border-b border-border flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">Files</span>
+            <div className="h-full flex flex-col bg-[var(--qw-panel)]/80 border-r border-[var(--qw-line)]">
+              <div className="p-3 border-b border-[var(--qw-line)] flex items-center justify-between">
+                <span className="qw-panel-head">Files</span>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setShowFileSearch(!showFileSearch)} title="Search in files" data-testid="button-toggle-search">
                     <Search className="w-3.5 h-3.5" />
@@ -3707,16 +3791,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 </div>
               </ScrollArea>
 
-              <div className="p-2 border-t border-border">
+              <div className="qw-gex-dock">
+                <div className="qw-gex-label">_Gex · surgical debug</div>
+                <p className="text-xs text-muted-foreground mb-2.5">
+                  {selectedFile
+                    ? <>Target <span className="text-red-200 font-semibold">{selectedFile.split("/").pop()}</span>. Scan, patch, review diffs in-place.</>
+                    : "Pick a file to target, or scan the whole environment."}
+                </p>
                 <button
                   onClick={() => runGex(selectedFile || undefined)}
                   disabled={gexRunning || isSendingMessage || hasPendingReview}
-                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    gexRunning
-                      ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
-                      : hasPendingReview
-                      ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
-                      : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 hover:shadow-red-800/40 active:scale-[0.97]"
+                  className={`qw-gex-btn ${
+                    gexRunning ? "qw-gex-running" : hasPendingReview ? "qw-gex-blocked" : ""
                   }`}
                   data-testid="button-gex-debug"
                 >
@@ -3725,11 +3811,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     : <><ScanSearch className="w-4 h-4" />Debug w/ _Gex</>
                   }
                 </button>
-                {selectedFile && !gexRunning && (
-                  <div className="text-[10px] text-muted-foreground text-center mt-1 truncate">
-                    Target: {selectedFile}
-                  </div>
-                )}
               </div>
             </div>
           </ResizablePanel>
@@ -3737,7 +3818,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <ResizableHandle />
 
           <ResizablePanel defaultSize={45}>
-            <div className="h-full flex flex-col bg-background">
+            <div className="h-full flex flex-col bg-[var(--qw-ink)]">
               {openTabs.length > 0 ? (
                 <>
                   <div className="border-b border-border bg-background/80 flex flex-col">
@@ -3752,7 +3833,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                           <div
                             key={tab}
                             className={`group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${
-                              isActive ? "bg-background text-foreground border-b-2 border-b-indigo-500" : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
+                              isActive ? "qw-tab-active bg-[var(--qw-ink)] text-foreground border-b-2 border-b-[var(--qw-emerald)]" : "bg-white/[0.02] text-muted-foreground hover:bg-white/[0.04]"
                             } ${isGexMod && !isAccepted ? "border-t-2 border-t-red-500" : ""} ${isAccepted ? "border-t-2 border-t-green-500" : ""}`}
                             onClick={() => switchTab(tab)}
                             data-testid={`tab-${tab}`}
@@ -3956,14 +4037,14 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <ResizableHandle />
 
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="h-full min-h-0 flex flex-col bg-background/50 min-w-0">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
-                <TabsList className="border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
-                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
+            <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <TabsList className="border-b border-[var(--qw-line)] rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
+                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-2.5 py-1.5 text-xs" data-testid="tab-chat">
                     <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
                   </TabsTrigger>
                   {isEnterprise && (
-                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
+                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
                       <Terminal className="w-3.5 h-3.5 mr-1" />Terminal
                     </TabsTrigger>
                   )}
@@ -3986,7 +4067,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </TabsTrigger>
                 </TabsList>
 
-                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative">
+                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative" style={{ flex: "1 1 0%", minHeight: 0, position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", margin: 0 }}>
                     {renderChatPanel()}
                   </TabsContent>
 
@@ -4078,6 +4159,18 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      <footer className="qw-provenance">
+        <span className="qw-own">Ownership · every layer</span>
+        <span>
+          session <b>{runtimeSessionId ? runtimeSessionId.slice(0, 8) : "—"}</b>
+          {" · "}
+          {environment.llm_provider || "provider"}
+          {" · "}
+          patches <b>{pendingPatchCount}</b>
+        </span>
+        <span>AiAssist Secure · KeyStone</span>
+      </footer>
     </div>
   );
 }
