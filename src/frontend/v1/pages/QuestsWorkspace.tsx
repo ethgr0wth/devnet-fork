@@ -6,7 +6,7 @@ import {
   Trash2, Edit2, Save, X, Code2, MessageSquare,
   Settings, Play, RefreshCw, ChevronRight,
   FileCode, FileJson, FileText, Sparkles, Bot, User, Square,
-  AlertCircle, Download, GitBranch as Github, Loader2, FolderArchive,  // V2 EDIT: brand icons removed from lucide; GitBranch stands in
+  AlertCircle, Download, Github, Loader2, FolderArchive,
   Terminal, Rocket, ScrollText, Search, ChevronDown,
   Package, Server, Activity, Eye, Cpu, HardDrive,
   GitBranch, FolderGit, Zap, Shield, MoreHorizontal,
@@ -1068,7 +1068,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     let allEdited: string[] = [];
 
     try {
-      const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
+      const response = await fetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-AiAssist-Provider": selectedProvider || detectedProvider },
         body: JSON.stringify({
@@ -1419,7 +1419,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       setChatError(null);
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
-      const response = await apiFetch(`/api/keystone/environments/${envId}/chat/stream`, {
+      const response = await fetch(`/api/keystone/environments/${envId}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-AiAssist-Provider": selectedProvider || detectedProvider },
         body: JSON.stringify({
@@ -2113,7 +2113,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             50% { transform: scale(1.15); opacity: 0.6; }
           }
         `}</style>
-        <div className="h-full min-h-full bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
+        <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden" data-testid="loading-environment">
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-[40%] -left-[20%] w-[80%] h-[80%] rounded-full bg-indigo-500/[0.06] blur-[100px] animate-pulse" />
             <div className="absolute -bottom-[30%] -right-[20%] w-[70%] h-[70%] rounded-full bg-cyan-500/[0.05] blur-[100px] animate-pulse" style={{ animationDelay: "1s" }} />
@@ -2738,16 +2738,26 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   };
 
   const renderChatPanel = (compact: boolean = false) => (
-    // Anchored to the nearest positioned ancestor (both call sites are
-    // `relative` with a definite height) so the chat column can never
-    // inherit a broken percentage chain — it always fills its tab exactly.
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
+    <div className="qw-chat-root flex flex-col h-full overflow-hidden">
+      <div className="qw-chat-status" data-testid="chat-status-bar">
+        <div className="left">
+          <span className="label">KeyStone Agent</span>
+          <span className="dot-s" style={{ background: runtimeSessionId ? "#12d48a" : "#6b7280", boxShadow: runtimeSessionId ? "0 0 8px #12d48a" : "none" }} title={runtimeSessionId ? "Runtime connected" : "Runtime offline"} />
+        </div>
+        <div className="meta">
+          <span data-testid="status-mode">{editorMode === "focus" ? "FOCUS" : "KEYSTONE"}</span>
+          {editorMode === "keystone" && (
+            <span style={{ color: readOnlyMode ? "#f5a524" : "#12d48a" }}>{readOnlyMode ? "READ" : "R/W"}</span>
+          )}
+          <span data-testid="status-msg-count">{messages.length} MSG</span>
+        </div>
+      </div>
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+        className="qw-chat-scroll flex-1 overflow-y-auto overflow-x-hidden"
       >
-        <div className={`${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`}>
+        <div className={`space-y-${compact ? "3" : "4"} p-${compact ? "3" : "4"} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Bot className="w-10 h-10 mx-auto mb-3 opacity-50" />
@@ -3102,7 +3112,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       )}
 
-      <div className={`${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`}>
+      <div className={`qw-composer ${compact ? "compact" : ""}`}>
+        <div className="qw-composer-box">
         {chatError && (
           <div className="flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3112,27 +3123,21 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Button>
           </div>
         )}
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit ace-glow-border">
+        <div className="qw-mode-row">
+          <div className="qw-seg">
             <button
               onClick={() => setEditorMode("keystone")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                editorMode === "keystone"
-                  ? "bg-gradient-to-r from-cyan-500/15 via-violet-500/15 to-pink-500/15 shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              title="Keystone Mode: Full code editor"
+              type="button"
+              className={editorMode === "keystone" ? "active" : ""}
+              title="KeyStone Mode: Full code editor"
               data-testid="button-mode-keystone"
             >
-              <Code2 className="w-3 h-3 inline mr-1" /><span className={editorMode === "keystone" ? "ace-text-shimmer" : ""}>Keystone</span>
+              <Code2 className="w-3 h-3 inline mr-1" />KeyStone
             </button>
             <button
               onClick={() => setEditorMode("focus")}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-                editorMode === "focus"
-                  ? "bg-purple-500/20 text-purple-400 shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              type="button"
+              className={editorMode === "focus" ? "active focus" : ""}
               title="Focus Mode: Documentation & research only"
               data-testid="button-mode-focus"
             >
@@ -3142,24 +3147,20 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {editorMode === "keystone" && (
             <button
               onClick={() => setReadOnlyMode(!readOnlyMode)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 border ${
-                readOnlyMode
-                  ? "bg-amber-900/40 border-amber-500/40 text-amber-300"
-                  : "bg-emerald-900/30 border-emerald-500/30 text-emerald-300"
-              }`}
+              type="button"
+              className={`qw-rw-btn ${readOnlyMode ? "ro" : ""}`}
               title={readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files"}
               data-testid="button-toggle-read-write"
             >
               {readOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              <span>{readOnlyMode ? "Read-Only" : "Read & Write"}</span>
+              <span>{readOnlyMode ? "Read only" : "Read & write"}</span>
             </button>
           )}
         </div>
-        <div className="flex gap-2 items-center text-xs">
-          <Sparkles className="w-3 h-3 text-muted-foreground" />
+        <div className="qw-provider-row">
           {providers.length > 1 && (
             <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-              <SelectTrigger className={`h-7 w-24 bg-muted border-border text-xs`} data-testid="select-provider">
+              <SelectTrigger className="qw-select h-7 w-28 text-xs" data-testid="select-provider">
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
               <SelectContent>
@@ -3168,12 +3169,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </Select>
           )}
           {providers.length <= 1 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="qw-provider-pill">
               {providers[0]?.name || (detectedProvider ? detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1) : "AI")}
             </span>
           )}
           <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="flex-1 h-7 bg-muted border-border text-xs" data-testid="select-model">
+            <SelectTrigger className="qw-select flex-1 h-7 text-xs" data-testid="select-model">
               <SelectValue placeholder={isLoadingModels ? "Loading..." : "Auto"} />
             </SelectTrigger>
             <SelectContent>
@@ -3186,8 +3187,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           {providers.length === 0 && !isLoadingModels && (
             <Link href="/dashboard">
               <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300">
-                <Settings className="w-3 h-3 mr-1" />
-                Add Key
+                <Settings className="w-3 h-3 mr-1" />Add Key
               </Button>
             </Link>
           )}
@@ -3214,31 +3214,34 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               }
             }}
             placeholder={hasPendingReview ? "Review pending changes first..." : editorMode === "focus" ? "Ask about docs, specs, architecture..." : readOnlyMode ? "Ask about code, architecture, how to run..." : "Ask the AI for help..."}
-            className={`resize-none bg-muted border-border text-foreground min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`}
+            className={`qw-ta resize-none min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`}
             rows={1}
             disabled={hasPendingReview}
             data-testid="input-chat-message"
           />
           {isSendingMessage ? (
-            <Button
+            <button
+              type="button"
               onClick={stopStream}
-              className="bg-red-600 hover:bg-red-700 h-auto px-3"
+              className="qw-stop-btn"
               title="Stop generating"
               data-testid="button-stop-stream"
             >
               <Square className="w-4 h-4" />
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
+              type="button"
               onClick={sendMessage}
               disabled={hasPendingReview}
-              className="bg-indigo-600 hover:bg-indigo-700 h-auto px-3"
+              className="qw-send"
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
               data-testid="button-send-message"
             >
               <Send className="w-4 h-4" />
-            </Button>
+            </button>
           )}
+        </div>
         </div>
       </div>
     </div>
@@ -3246,7 +3249,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
   if (isMobile) {
     return (
-      <div className="bg-background flex flex-col h-full min-h-0">
+      <div className="bg-background flex flex-col" style={{ height: "100dvh" }}>
         <header className="glass-header flex-shrink-0 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
           <div className="flex items-center justify-between px-3 py-2 relative z-10">
@@ -3560,62 +3563,68 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   }
 
   return (
-    <div className="h-full w-full bg-background flex flex-col min-h-0">
-      <header className="glass-header flex-shrink-0 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] via-violet-500/[0.05] to-pink-500/[0.03] pointer-events-none" />
-        <div className="flex items-center justify-between px-4 py-2 relative z-10">
-          <div className="flex items-center gap-3">
-            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-muted/50 rounded" data-testid="link-back-portal">
+    <div className="qw-shell h-full w-full min-h-0 overflow-hidden bg-background flex flex-col">
+      <header className="qw-brandbar glass-header flex-shrink-0 relative overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2.5 relative z-10 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/keystone" className="text-muted-foreground hover:text-foreground transition-colors p-2 hover:bg-white/5 rounded-lg" data-testid="link-back-portal">
               <ChevronLeft className="w-5 h-5" />
             </Link>
-            <div className="flex items-center gap-2">
-              <img src={aiasLogo} alt="AiAS" className="w-6 h-6" />
-              <h1 className="text-lg font-semibold ace-text-shimmer" data-testid="text-env-name">{environment.name}</h1>
+            <div className="qw-mark" aria-hidden="true"><span>K</span></div>
+            <div className="min-w-0">
+              <div className="qw-kicker">KeyStone · AiAssist Secure</div>
+              <h1 className="text-lg ace-text-shimmer qw-env-title truncate" data-testid="text-env-name">{environment.name}</h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {runtimeSessionId && (
-              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-1 rounded flex items-center gap-1.5" data-testid="badge-runtime-session">
-                <Zap className="w-3 h-3 text-emerald-400" />
-                Runtime: {runtimeSessionId.slice(0, 8)}
+              <span className="qw-chip" data-testid="badge-runtime-session">
+                <span className="qw-dot" style={{ background: "#12d48a", boxShadow: "0 0 6px #12d48a" }} />
+                runtime {runtimeSessionId.slice(0, 8)}
               </span>
             )}
             {runtimeLoading && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <span className="qw-chip">
                 <Loader2 className="w-3 h-3 animate-spin" />Connecting...
               </span>
             )}
-            {!runtimeSessionId && !runtimeLoading && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-[10px] px-2 gap-1"
-                onClick={initRuntimeSession}
-                data-testid="button-init-runtime"
-              >
-                <Zap className="w-3 h-3" />
-                {runtimeError ? "Retry Runtime" : "Init Runtime"}
-              </Button>
-            )}
             {environment.llm_provider && (
-              <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded" data-testid="badge-provider">
-                {environment.llm_provider}
+              <span className="qw-chip qw-cool" data-testid="badge-provider">
+                <span className="qw-dot" />
+                {environment.llm_provider}{environment.llm_model ? ` · ${environment.llm_model}` : ""}
+              </span>
+            )}
+            {pendingPatchCount > 0 && (
+              <span className="qw-chip qw-warn">
+                <span className="qw-dot" />
+                {pendingPatchCount} pending patch{pendingPatchCount > 1 ? "es" : ""}
               </span>
             )}
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground"
+              className="text-muted-foreground h-8 w-8"
               title="Download all files as ZIP"
               onClick={() => window.open(`/api/keystone/environments/${envId}/files/download-all`, "_blank")}
               data-testid="button-download-all"
             >
               <FolderArchive className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className={`text-muted-foreground ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
+            <Button variant="ghost" size="icon" className={`text-muted-foreground h-8 w-8 ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
               <Settings className="w-4 h-4" />
             </Button>
+            {!runtimeSessionId && !runtimeLoading && (
+              <Button
+                size="sm"
+                className="h-8 text-xs px-3 gap-1.5 qw-btn-primary"
+                onClick={initRuntimeSession}
+                data-testid="button-init-runtime"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {runtimeError ? "Retry Runtime" : "Init Runtime"}
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -3956,37 +3965,38 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <ResizableHandle />
 
           <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="h-full min-h-0 flex flex-col bg-background/50 min-w-0">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0">
-                <TabsList className="border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap">
-                  <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-chat">
-                    <MessageSquare className="w-3.5 h-3.5 mr-1" />Chat
+            <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+                <TabsList className="qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full">
+                  <TabsTrigger value="chat" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-chat">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
+                    {messages.length > 0 && <span className="qw-tab-count ml-1.5">{messages.length}</span>}
                   </TabsTrigger>
                   {isEnterprise && (
-                    <TabsTrigger value="terminal" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-terminal">
-                      <Terminal className="w-3.5 h-3.5 mr-1" />Terminal
+                    <TabsTrigger value="terminal" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-terminal">
+                      <Terminal className="w-3.5 h-3.5 mr-1.5" />Terminal
                     </TabsTrigger>
                   )}
                   {isEnterprise && (
-                    <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-deploy">
-                      <Rocket className="w-3.5 h-3.5 mr-1" />Manage
+                    <TabsTrigger value="deploy" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-deploy">
+                      <Rocket className="w-3.5 h-3.5 mr-1.5" />Manage
                     </TabsTrigger>
                   )}
                   {isEnterprise && (
-                    <TabsTrigger value="ledger" className="rounded-none border-b-2 border-transparent data-[state=active]:border-amber-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-ledger">
-                      <ScrollText className="w-3.5 h-3.5 mr-1" />Ledger
+                    <TabsTrigger value="ledger" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-amber)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-ledger">
+                      <ScrollText className="w-3.5 h-3.5 mr-1.5" />Ledger
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="artifacts" className="rounded-none border-b-2 border-transparent data-[state=active]:border-violet-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-artifacts">
-                    <Package className="w-3.5 h-3.5 mr-1" />Artifacts
-                    {ksArtifacts.length > 0 && <span className="ml-1 bg-violet-500/20 text-violet-300 text-[10px] px-1.5 rounded-full">{ksArtifacts.length}</span>}
+                  <TabsTrigger value="artifacts" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-violet)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-artifacts">
+                    <Package className="w-3.5 h-3.5 mr-1.5" />Artifacts
+                    {ksArtifacts.length > 0 && <span className="qw-tab-count ml-1.5">{ksArtifacts.length}</span>}
                   </TabsTrigger>
-                  <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs" data-testid="tab-settings">
-                    <Settings className="w-3.5 h-3.5 mr-1" />Settings
+                  <TabsTrigger value="settings" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-orange-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-settings">
+                    <Settings className="w-3.5 h-3.5 mr-1.5" />Settings
                   </TabsTrigger>
                 </TabsList>
 
-                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative">
+                  <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
                     {renderChatPanel()}
                   </TabsContent>
 
