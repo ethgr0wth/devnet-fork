@@ -369,146 +369,6 @@ const relativeTime = (iso: string): string => {
   return `${Math.floor(h / 24)}d ago`;
 };
 
-function FileWindow({ envId, path, z, index, gexHighlight, onClose, onFocus }: {
-  envId: string;
-  path: string;
-  z: number;
-  index: number;
-  gexHighlight?: boolean;
-  onClose: () => void;
-  onFocus: () => void;
-}) {
-  const [pos, setPos] = useState(() => ({
-    x: 90 + (index % 7) * 42,
-    y: 48 + (index % 7) * 34,
-    w: Math.min(680, window.innerWidth - 200),
-    h: Math.min(440, window.innerHeight - 220),
-  }));
-  const [content, setContent] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const contentRef = useRef("");
-  const dragRef = useRef<{ mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number; ow: number; oh: number } | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    (async () => {
-      try {
-        const r = await apiFetch(`/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(path)}`).then(res => res.json());
-        if (alive) {
-          const c = r.content ?? "";
-          contentRef.current = c;
-          setContent(c);
-          setDirty(false);
-          setLoading(false);
-        }
-      } catch {
-        if (alive) { setLoading(false); toast.error(`Failed to load ${path}`); }
-      }
-    })();
-    return () => { alive = false; };
-  }, [envId, path]);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path, content: contentRef.current }),
-      });
-      setDirty(false);
-      toast.success(`Saved ${path.split("/").pop()}`);
-    } catch {
-      toast.error("Save failed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const startDrag = (mode: "move" | "resize") => (e: React.PointerEvent) => {
-    if (mode === "move" && (e.target as HTMLElement).closest("button")) return;
-    onFocus();
-    dragRef.current = { mode, sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y, ow: pos.w, oh: pos.h };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    e.preventDefault();
-  };
-  const onDragMove = (e: React.PointerEvent) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.sx;
-    const dy = e.clientY - d.sy;
-    if (d.mode === "move") {
-      setPos(p => ({ ...p, x: Math.max(0, d.ox + dx), y: Math.max(0, d.oy + dy) }));
-    } else {
-      setPos(p => ({ ...p, w: Math.max(340, d.ow + dx), h: Math.max(220, d.oh + dy) }));
-    }
-  };
-  const endDrag = () => { dragRef.current = null; };
-
-  const fileName = path.split("/").pop() || path;
-
-  return (
-    <div
-      className={`qw-file-window ${gexHighlight ? "qw-fw-gex" : ""}`}
-      style={{ left: pos.x, top: pos.y, width: pos.w, height: pos.h, zIndex: z }}
-      onPointerDown={onFocus}
-      data-testid={`file-window-${path}`}
-    >
-      <div
-        className="qw-fw-title"
-        onPointerDown={startDrag("move")}
-        onPointerMove={onDragMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        <FileCode className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-        <span className="qw-fw-name truncate" title={path}>{fileName}</span>
-        <span className="qw-fw-path truncate">{path}</span>
-        {dirty && <span className="qw-fw-dirty" title="Unsaved changes" />}
-        <button
-          className="qw-fw-btn"
-          onClick={save}
-          disabled={!dirty || saving}
-          title="Save (writes to workspace)"
-          data-testid={`button-fw-save-${path}`}
-        >
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-        </button>
-        <button className="qw-fw-btn qw-fw-close" onClick={onClose} title="Close" data-testid={`button-fw-close-${path}`}>
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div className="qw-fw-body">
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
-          </div>
-        ) : (
-          <Editor
-            height="100%"
-            language={getLanguageFromFilename(fileName)}
-            defaultValue={content}
-            onChange={(v) => { contentRef.current = v || ""; setDirty(true); }}
-            theme="vs-dark"
-            options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", automaticLayout: true, padding: { top: 6, bottom: 6 } }}
-            key={`fw-${path}`}
-          />
-        )}
-      </div>
-      <div
-        className="qw-fw-resize"
-        onPointerDown={startDrag("resize")}
-        onPointerMove={onDragMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      />
-    </div>
-  );
-}
-
 export default function QuestsWorkspace() {
   const params = useParams<{ id: string }>();
   const envId = params.id;
@@ -720,75 +580,28 @@ export default function QuestsWorkspace() {
 
   const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
 
-  // Auto-approve: patches are trusted and applied immediately — no review gate.
-  const hasPendingReview = false;
-
-  useEffect(() => {
-    if (gexModifiedFiles.length === 0) return;
-    setGexPatchAccepted(prev => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const f of gexModifiedFiles) {
-        if (!next.has(f)) { next.add(f); changed = true; }
+  const hasPendingReview = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
+    if (!lastAssistant) return false;
+    if (!sessionMessageIds.current.has(lastAssistant.id)) return false;
+    const hasChanges = (lastAssistant.filesWritten && lastAssistant.filesWritten.length > 0) ||
+                       (lastAssistant.filesEdited && lastAssistant.filesEdited.length > 0);
+    if (!hasChanges) return false;
+    const blocks = parseContentForDisplay(lastAssistant.content);
+    return blocks.some((block, bi) => {
+      if (block.type !== "file" && block.type !== "edit") return false;
+      const blockKey = `${lastAssistant.id}-${bi}`;
+      if (dismissedBlocks.has(blockKey) || rejectedBlocks.has(blockKey)) return false;
+      if (block.type === "edit" && block.editOps) {
+        const allOpsHandled = block.editOps.every((_, oi) => {
+          const opKey = `${blockKey}-op-${oi}`;
+          return rejectedBlocks.has(opKey);
+        });
+        if (allOpsHandled) return false;
       }
-      return changed ? next : prev;
+      return true;
     });
-  }, [gexModifiedFiles]);
-
-  // --- Canvas layout (chat-first desktop) state ---
-  const [railOpen, setRailOpen] = useState(true);
-  const [threadOpen, setThreadOpen] = useState(true);
-  const [dockTab, setDockTab] = useState<null | "terminal" | "preview" | "deploy" | "ledger" | "artifacts" | "settings">(null);
-  const [fileWins, setFileWins] = useState<{ path: string; z: number }[]>([]);
-  const winZRef = useRef(60);
-  const openFileWindow = (path: string) => {
-    setFileWins(prev => {
-      const z = ++winZRef.current;
-      if (prev.some(w => w.path === path)) return prev.map(w => w.path === path ? { ...w, z } : w);
-      return [...prev, { path, z }];
-    });
-  };
-  const closeFileWindow = (path: string) => setFileWins(prev => prev.filter(w => w.path !== path));
-  const focusFileWindow = (path: string) => setFileWins(prev => prev.map(w => w.path === path ? { ...w, z: ++winZRef.current } : w));
-
-  type ThreadSnap = { id: string; title: string; savedAt: number; messages: ChatMessage[] };
-  const threadsKey = `ks_threads:${envId}`;
-  const [threads, setThreads] = useState<ThreadSnap[]>(() => {
-    try { return JSON.parse(localStorage.getItem(`ks_threads:${envId}`) || "[]"); } catch { return []; }
-  });
-  const persistThreads = (t: ThreadSnap[]) => {
-    setThreads(t);
-    try { localStorage.setItem(threadsKey, JSON.stringify(t.slice(0, 20))); } catch { /* quota */ }
-  };
-  const snapshotCurrentThread = (): ThreadSnap | null => {
-    if (messages.length === 0) return null;
-    const firstUser = messages.find(m => m.role === "user");
-    return {
-      id: `t_${Date.now()}`,
-      title: (firstUser?.content || "Thread").slice(0, 64),
-      savedAt: Date.now(),
-      messages,
-    };
-  };
-  const startNewThread = () => {
-    const snap = snapshotCurrentThread();
-    if (snap) persistThreads([snap, ...threads]);
-    setMessages([]);
-    sessionMessageIds.current = new Set();
-    setThreadOpen(true);
-    resetContext();
-  };
-  const attachThread = (id: string) => {
-    const t = threads.find(x => x.id === id);
-    if (!t) return;
-    const snap = snapshotCurrentThread();
-    const rest = threads.filter(x => x.id !== id);
-    persistThreads(snap ? [snap, ...rest] : rest);
-    setMessages(t.messages);
-    sessionMessageIds.current = new Set();
-    setThreadOpen(true);
-    resetContext();
-  };
+  }, [messages, dismissedBlocks, rejectedBlocks]);
 
   const [runtimeSessionId, setRuntimeSessionId] = useState<string | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
@@ -2224,7 +2037,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     return (
       <div key={node.path} className="group relative flex items-center">
         <button
-          onClick={() => { if (isMobile) { loadFile(node.path); } else { setSelectedFile(node.path); openFileWindow(node.path); } }}
+          onClick={() => loadFile(node.path)}
           onDoubleClick={(e) => { e.preventDefault(); startRename(node.path, node.name); }}
           className={`flex items-center gap-2 w-full px-2 py-1 text-left text-sm hover:bg-muted/50 rounded transition-colors ${
             isSelected ? "bg-indigo-600/20 text-indigo-300" : ""
@@ -3024,7 +2837,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     );
   };
 
-  const renderChatStatusBar = () => (
+  const renderChatPanel = (compact: boolean = false) => (
+    <div className="qw-chat-root flex flex-col h-full overflow-hidden">
       <div className="qw-chat-status" data-testid="chat-status-bar">
         <div className="left">
           <span className="label">KeyStone Agent</span>
@@ -3038,9 +2852,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <span data-testid="status-msg-count">{messages.length} MSG</span>
         </div>
       </div>
-  );
-
-  const renderChatMessages = (compact: boolean = false) => (
       <div
         ref={chatContainerRef}
         onScroll={handleChatScroll}
@@ -3386,25 +3197,21 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           <div ref={chatEndRef} />
         </div>
       </div>
-  );
 
-  const renderScrollToBottomBtn = () => (
-    !shouldAutoScroll && messages.length > 3 ? (
-      <div className="absolute bottom-28 right-6 z-10">
-        <Button
-          size="sm"
-          variant="outline"
-          className="rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg"
-          onClick={scrollToBottom}
-          data-testid="button-scroll-to-bottom"
-        >
-          <ArrowDown className="w-4 h-4" />
-        </Button>
-      </div>
-    ) : null
-  );
+      {!shouldAutoScroll && messages.length > 3 && (
+        <div className="absolute bottom-28 right-6 z-10">
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg"
+            onClick={scrollToBottom}
+            data-testid="button-scroll-to-bottom"
+          >
+            <ArrowDown className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
-  const renderComposer = (compact: boolean = false) => (
       <div className={`qw-composer ${compact ? "compact" : ""}`}>
         <div className="qw-composer-box">
         {chatError && (
@@ -3537,14 +3344,6 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
         </div>
       </div>
-  );
-
-  const renderChatPanel = (compact: boolean = false) => (
-    <div className="qw-chat-root flex flex-col h-full overflow-hidden">
-      {renderChatStatusBar()}
-      {renderChatMessages(compact)}
-      {renderScrollToBottomBtn()}
-      {renderComposer(compact)}
     </div>
   );
 
@@ -3912,7 +3711,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             >
               <FolderArchive className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className={`text-muted-foreground h-8 w-8 ${dockTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setDockTab(dockTab === "settings" ? null : "settings")} data-testid="button-settings">
+            <Button variant="ghost" size="icon" className={`text-muted-foreground h-8 w-8 ${activeTab === "settings" ? "bg-orange-500/10 text-orange-400" : ""}`} onClick={() => setActiveTab(activeTab === "settings" ? "chat" : "settings")} data-testid="button-settings">
               <Settings className="w-4 h-4" />
             </Button>
             {!runtimeSessionId && !runtimeLoading && (
@@ -3930,257 +3729,461 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 relative overflow-hidden qw-canvas">
-        <div className={`qw-rail ${railOpen ? "" : "qw-rail-hidden"}`} data-testid="panel-left-rail">
-          <div className="qw-rail-head">
-            <span className="qw-rail-title">Threads</span>
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={startNewThread} title="New thread (archives current)" data-testid="button-new-thread">
-                <Plus className="w-3.5 h-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => setRailOpen(false)} title="Hide panel" data-testid="button-collapse-rail">
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-          <div className="qw-rail-threads">
-            <button className="qw-thread-item active" onClick={() => setThreadOpen(true)} data-testid="thread-current">
-              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate flex-1 text-left">Current thread</span>
-              <span className="qw-thread-count">{messages.length}</span>
-            </button>
-            {threads.map(t => (
-              <button key={t.id} className="qw-thread-item" onClick={() => attachThread(t.id)} title={t.title} data-testid={`thread-item-${t.id}`}>
-                <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-50" />
-                <span className="truncate flex-1 text-left">{t.title}</span>
-                <span className="qw-thread-count">{t.messages.length}</span>
-              </button>
-            ))}
-          </div>
-          <div className="qw-rail-head" style={{ borderTop: "1px solid var(--qw-line)" }}>
-            <span className="qw-rail-title">Files</span>
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => setShowFileSearch(!showFileSearch)} title="Search in files" data-testid="button-toggle-search">
-                <Search className="w-3.5 h-3.5" />
-              </Button>
-              <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" title="Clone GitHub repository" data-testid="button-clone-github">
-                    <Github className="w-3.5 h-3.5" />
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal">
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+            <div className="h-full flex flex-col bg-background/50 border-r border-border">
+              <div className="p-3 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">Files</span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={() => setShowFileSearch(!showFileSearch)} title="Search in files" data-testid="button-toggle-search">
+                    <Search className="w-3.5 h-3.5" />
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-background border-border">
-                  <DialogHeader>
-                    <DialogTitle>Clone GitHub Repository</DialogTitle>
-                    <DialogDescription className="text-muted-foreground">Clone a public GitHub repository into this environment.</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div className="space-y-2">
-                      <Label>Repository URL</Label>
-                      <Input placeholder="https://github.com/owner/repo" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} className="bg-muted border-border" data-testid="input-github-url" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Branch</Label>
-                      <Input placeholder="main" value={githubBranch} onChange={(e) => setGithubBranch(e.target.value)} className="bg-muted border-border" data-testid="input-github-branch" />
-                    </div>
-                    <div className="text-xs text-muted-foreground">Only public repositories are supported. Max size: 50MB.</div>
-                    <Button onClick={cloneGithubRepo} disabled={!githubUrl.trim() || isCloningRepo} className="w-full" data-testid="button-clone-submit">
-                      {isCloningRepo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cloning...</> : <><Github className="w-4 h-4 mr-2" />Clone Repository</>}
+                  <Dialog open={githubCloneOpen} onOpenChange={setGithubCloneOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="Clone GitHub repository" data-testid="button-clone-github">
+                        <Github className="w-3.5 h-3.5" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-background border-border">
+                      <DialogHeader>
+                        <DialogTitle>Clone GitHub Repository</DialogTitle>
+                        <DialogDescription className="text-muted-foreground">Clone a public GitHub repository into this environment.</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="space-y-2">
+                          <Label>Repository URL</Label>
+                          <Input placeholder="https://github.com/owner/repo" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} className="bg-muted border-border" data-testid="input-github-url" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Branch</Label>
+                          <Input placeholder="main" value={githubBranch} onChange={(e) => setGithubBranch(e.target.value)} className="bg-muted border-border" data-testid="input-github-branch" />
+                        </div>
+                        <div className="text-xs text-muted-foreground">Only public repositories are supported. Max size: 50MB.</div>
+                        <Button onClick={cloneGithubRepo} disabled={!githubUrl.trim() || isCloningRepo} className="w-full" data-testid="button-clone-submit">
+                          {isCloningRepo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Cloning...</> : <><Github className="w-4 h-4 mr-2" />Clone Repository</>}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadFileTree} data-testid="button-refresh-files">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {showFileSearch && (
+                <div className="p-2 border-b border-border">
+                  <div className="flex gap-1">
+                    <Input
+                      value={fileSearchQuery}
+                      onChange={(e) => setFileSearchQuery(e.target.value)}
+                      placeholder="Search pattern..."
+                      className="flex-1 h-7 text-xs bg-muted border-border"
+                      onKeyDown={(e) => e.key === "Enter" && searchInFiles()}
+                      data-testid="input-file-search"
+                    />
+                    <Button size="sm" variant="outline" onClick={searchInFiles} disabled={fileSearching || !runtimeSessionId} className="h-7 px-2" data-testid="button-file-search">
+                      {fileSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                     </Button>
                   </div>
-                </DialogContent>
-              </Dialog>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={loadFileTree} data-testid="button-refresh-files">
-                <RefreshCw className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          {showFileSearch && (
-            <div className="p-2 border-b border-border">
-              <div className="flex gap-1">
-                <Input
-                  value={fileSearchQuery}
-                  onChange={(e) => setFileSearchQuery(e.target.value)}
-                  placeholder="Search pattern..."
-                  className="flex-1 h-7 text-xs bg-muted border-border"
-                  onKeyDown={(e) => e.key === "Enter" && searchInFiles()}
-                  data-testid="input-file-search"
-                />
-                <Button size="sm" variant="outline" onClick={searchInFiles} disabled={fileSearching || !runtimeSessionId} className="h-7 px-2" data-testid="button-file-search">
-                  {fileSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                </Button>
-              </div>
-              {fileSearchResults.length > 0 && (
-                <ScrollArea className="mt-2 max-h-48">
-                  <div className="space-y-0.5">
-                    {fileSearchResults.map((hit, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { setSelectedFile(hit.file); openFileWindow(hit.file); }}
-                        className="w-full text-left px-2 py-1 text-xs hover:bg-muted/50 rounded"
-                        data-testid={`search-hit-${i}`}
-                      >
-                        <span className="text-indigo-400 font-mono text-[10px]">{hit.file}</span>
-                        <span className="text-muted-foreground text-[10px]">:{hit.line}</span>
-                        <div className="text-muted-foreground truncate text-[10px]">{hit.content}</div>
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </div>
-          )}
-
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-2">
-              {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
-                <div className="text-center py-8 text-muted-foreground text-sm">No files yet</div>
-              )}
-            </div>
-          </ScrollArea>
-
-          <div className="p-2 border-t border-border">
-            <button
-              onClick={() => runGex(selectedFile || undefined)}
-              disabled={gexRunning || isSendingMessage}
-              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                gexRunning
-                  ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
-                  : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 hover:shadow-red-800/40 active:scale-[0.97]"
-              }`}
-              data-testid="button-gex-debug"
-            >
-              {gexRunning
-                ? <><Loader2 className="w-4 h-4 animate-spin" />Scanning...</>
-                : <><ScanSearch className="w-4 h-4" />Debug w/ _Gex</>
-              }
-            </button>
-            {selectedFile && !gexRunning && (
-              <div className="text-[10px] text-muted-foreground text-center mt-1 truncate">
-                Target: {selectedFile}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {!railOpen && (
-          <button className="qw-rail-fab" onClick={() => setRailOpen(true)} title="Show panel" data-testid="button-open-rail">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        )}
-
-        {fileWins.length === 0 && (
-          <div className="qw-canvas-hint">
-            <Code2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p>Open a file from the panel — it floats here as a window</p>
-          </div>
-        )}
-
-        {fileWins.map((w, i) => (
-          <FileWindow
-            key={w.path}
-            envId={envId!}
-            path={w.path}
-            z={w.z}
-            index={i}
-            gexHighlight={gexModifiedFiles.includes(w.path)}
-            onClose={() => closeFileWindow(w.path)}
-            onFocus={() => focusFileWindow(w.path)}
-          />
-        ))}
-
-        <div className={`qw-center-col ${railOpen ? "qw-center-shift" : ""}`}>
-          {threadOpen && (
-            <div className="qw-thread-float" data-testid="thread-overlay">
-              <div className="qw-thread-float-head">
-                <div className="flex-1 min-w-0">{renderChatStatusBar()}</div>
-                <button className="qw-fw-btn" onClick={() => setThreadOpen(false)} title="Hide thread" data-testid="button-hide-thread">
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-              </div>
-              {renderChatMessages()}
-              {renderScrollToBottomBtn()}
-            </div>
-          )}
-
-          <div className="qw-promptbar" data-testid="prompt-bar">
-            {!threadOpen && messages.length > 0 && (
-              <button className="qw-thread-peek" onClick={() => setThreadOpen(true)} data-testid="button-show-thread">
-                <ChevronUp className="w-3.5 h-3.5" />
-                <span>{messages.length} messages</span>
-              </button>
-            )}
-            {renderComposer(false)}
-          </div>
-
-          {dockTab && (
-            <div className="qw-dock" data-testid="bottom-dock">
-              {dockTab === "terminal" && <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{renderTerminalTab()}</div>}
-              {dockTab === "preview" && <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{renderPreviewPanel()}</div>}
-              {dockTab === "deploy" && <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">{renderDeployTab()}</div>}
-              {dockTab === "ledger" && <div className="flex-1 min-h-0 overflow-hidden flex flex-col">{renderLedgerTab()}</div>}
-              {dockTab === "settings" && <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">{renderSettingsContent()}</div>}
-              {dockTab === "artifacts" && (
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground flex items-center gap-2"><Package className="w-4 h-4 text-violet-400" />Artifacts</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadKsArtifacts} data-testid="button-refresh-artifacts"><RefreshCw className="w-3.5 h-3.5" /></Button>
-                  </div>
-                  {ksArtifactsLoading ? (
-                    <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-violet-400" /></div>
-                  ) : ksArtifacts.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      <Package className="w-7 h-7 mx-auto mb-2 opacity-50" />
-                      <p>No artifacts yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {ksArtifacts.map((a) => (
-                        <div key={a.id} className="bg-muted/30 border border-border rounded-lg p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-foreground truncate" data-testid={`text-ks-artifact-${a.id}`}>{a.name}</p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">{a.target_stack || "text"}</p>
-                            </div>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-violet-400" onClick={() => importArtifactToEnv(a)} disabled={ksImporting === a.id} data-testid={`button-import-artifact-${a.id}`}>
-                              {ksImporting === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Download className="w-3 h-3 mr-1" />Import</>}
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  {fileSearchResults.length > 0 && (
+                    <ScrollArea className="mt-2 max-h-48">
+                      <div className="space-y-0.5">
+                        {fileSearchResults.map((hit, i) => (
+                          <button
+                            key={i}
+                            onClick={() => loadFile(hit.file)}
+                            className="w-full text-left px-2 py-1 text-xs hover:bg-muted/50 rounded"
+                            data-testid={`search-hit-${i}`}
+                          >
+                            <span className="text-indigo-400 font-mono text-[10px]">{hit.file}</span>
+                            <span className="text-muted-foreground text-[10px]">:{hit.line}</span>
+                            <div className="text-muted-foreground truncate text-[10px]">{hit.content}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
                 </div>
               )}
-            </div>
-          )}
 
-          <div className="qw-dock-tabs" data-testid="dock-tabs">
-            <button className={`qw-dock-tab ${dockTab === "terminal" ? "active term" : ""}`} onClick={() => setDockTab(dockTab === "terminal" ? null : "terminal")} data-testid="dock-tab-terminal">
-              <Terminal className="w-3.5 h-3.5" />Terminal
-            </button>
-            <button className={`qw-dock-tab ${dockTab === "preview" ? "active" : ""}`} onClick={() => setDockTab(dockTab === "preview" ? null : "preview")} data-testid="dock-tab-preview">
-              <Globe className="w-3.5 h-3.5" />Preview
-            </button>
-            {isEnterprise && (
-              <button className={`qw-dock-tab ${dockTab === "deploy" ? "active" : ""}`} onClick={() => setDockTab(dockTab === "deploy" ? null : "deploy")} data-testid="dock-tab-deploy">
-                <Rocket className="w-3.5 h-3.5" />Deploy
-              </button>
-            )}
-            {isEnterprise && (
-              <button className={`qw-dock-tab ${dockTab === "ledger" ? "active" : ""}`} onClick={() => setDockTab(dockTab === "ledger" ? null : "ledger")} data-testid="dock-tab-ledger">
-                <ScrollText className="w-3.5 h-3.5" />Ledger
-              </button>
-            )}
-            <button className={`qw-dock-tab ${dockTab === "artifacts" ? "active" : ""}`} onClick={() => setDockTab(dockTab === "artifacts" ? null : "artifacts")} data-testid="dock-tab-artifacts">
-              <Package className="w-3.5 h-3.5" />Artifacts{ksArtifacts.length > 0 ? <span className="qw-thread-count">{ksArtifacts.length}</span> : null}
-            </button>
-            <button className={`qw-dock-tab ${dockTab === "settings" ? "active" : ""}`} onClick={() => setDockTab(dockTab === "settings" ? null : "settings")} data-testid="dock-tab-settings">
-              <Settings className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2">
+                  {fileTree ? fileTree.children?.map(child => renderFileTree(child, 0)) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">No files yet</div>
+                  )}
+                </div>
+              </ScrollArea>
+
+              <div className="p-2 border-t border-border">
+                <button
+                  onClick={() => runGex(selectedFile || undefined)}
+                  disabled={gexRunning || isSendingMessage || hasPendingReview}
+                  className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    gexRunning
+                      ? "bg-red-500/20 text-red-400 animate-pulse cursor-wait"
+                      : hasPendingReview
+                      ? "bg-red-500/10 text-red-400/50 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30 hover:shadow-red-800/40 active:scale-[0.97]"
+                  }`}
+                  data-testid="button-gex-debug"
+                >
+                  {gexRunning
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Scanning...</>
+                    : <><ScanSearch className="w-4 h-4" />Debug w/ _Gex</>
+                  }
+                </button>
+                {selectedFile && !gexRunning && (
+                  <div className="text-[10px] text-muted-foreground text-center mt-1 truncate">
+                    Target: {selectedFile}
+                  </div>
+                )}
+              </div>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={47} minSize={30}>
+            <ResizablePanelGroup direction="vertical" className="h-full">
+              <ResizablePanel defaultSize={65} minSize={30}>
+                <div className="h-full flex flex-col bg-background">
+              {openTabs.length > 0 ? (
+                <>
+                  <div className="border-b border-border bg-background/80 flex flex-col">
+                    <div className="flex items-center overflow-x-auto scrollbar-thin">
+                      {openTabs.map(tab => {
+                        const isActive = tab === selectedFile;
+                        const isGexMod = gexModifiedFiles.includes(tab);
+                        const isAccepted = gexPatchAccepted.has(tab);
+                        const tabDirty = tabContents[tab] && tabContents[tab].content !== tabContents[tab].original;
+                        const fileName = tab.split("/").pop() || tab;
+                        return (
+                          <div
+                            key={tab}
+                            className={`group flex items-center gap-1 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${
+                              isActive ? "bg-background text-foreground border-b-2 border-b-indigo-500" : "bg-muted/30 text-muted-foreground hover:bg-muted/60"
+                            } ${isGexMod && !isAccepted ? "border-t-2 border-t-red-500" : ""} ${isAccepted ? "border-t-2 border-t-green-500" : ""}`}
+                            onClick={() => switchTab(tab)}
+                            data-testid={`tab-${tab}`}
+                          >
+                            {getFileIcon(fileName)}
+                            <span className="truncate max-w-[120px]">{fileName}</span>
+                            {tabDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
+                            {isGexMod && !isAccepted && <FileWarning className="w-3 h-3 text-red-400 shrink-0" />}
+                            {isAccepted && <CheckCircle2 className="w-3 h-3 text-green-400 shrink-0" />}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); closeTab(tab); }}
+                              className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-opacity"
+                              data-testid={`close-tab-${tab}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedFile && (
+                      <div className="flex items-center justify-between px-2 py-1 bg-background/50 border-t border-border/50">
+                        <div className="flex items-center gap-1">
+                          {selectedFile.endsWith(".py") && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground text-xs h-6 px-2"
+                                title="Functions Map"
+                                onClick={async () => {
+                                  try {
+                                    const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/functions?path=${encodeURIComponent(selectedFile)}`);
+                                    const data = await res.json();
+                                    const fns = data.functions || [];
+                                    if (fns.length === 0) { toast.info("No functions found"); return; }
+                                    toast.success(`${fns.length} functions: ${fns.map((f: any) => `${f.name}(${f.args.join(",")}):L${f.line}`).join(", ")}`, { duration: 8000 });
+                                  } catch { toast.error("Analysis failed"); }
+                                }}
+                                data-testid="button-functions-map"
+                              >
+                                <FunctionSquare className="w-3 h-3 mr-1" />
+                                Fns
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground text-xs h-6 px-2"
+                                title="Bracket Check"
+                                onClick={async () => {
+                                  try {
+                                    const res = await apiFetch(`/api/keystone/environments/${envId}/files/analyze/brackets?path=${encodeURIComponent(selectedFile)}`);
+                                    const data = await res.json();
+                                    data.balanced ? toast.success("Brackets balanced") : toast.error(`Bracket mismatch at position ${data.error_at || "unknown"}`);
+                                  } catch { toast.error("Analysis failed"); }
+                                }}
+                                data-testid="button-bracket-check"
+                              >
+                                <Braces className="w-3 h-3 mr-1" />
+                                Check
+                              </Button>
+                            </>
+                          )}
+                          {gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && (
+                            <div className="flex items-center gap-1 ml-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-green-400 hover:text-green-300 text-xs h-6 px-2"
+                                onClick={() => acceptGexFile(selectedFile)}
+                                data-testid="button-accept-patch"
+                              >
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Accept
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 text-xs h-6 px-2"
+                                onClick={() => revertGexFile(selectedFile)}
+                                data-testid="button-revert-patch"
+                              >
+                                <RotateCcw className="w-3 h-3 mr-1" />
+                                Revert
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={saveFile} disabled={!hasUnsavedChanges || isSavingFile} className="text-muted-foreground text-xs h-6 px-2" data-testid="button-save-file">
+                            <Save className="w-3 h-3 mr-1" />Save
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => window.open(`/api/keystone/environments/${envId}/files/download?path=${encodeURIComponent(selectedFile || "")}`, "_blank")} className="text-muted-foreground text-xs h-6 px-2" data-testid="button-download-file">
+                            <Download className="w-3 h-3 mr-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {gexModifiedFiles.length > 0 && gexModifiedFiles.some(f => !gexPatchAccepted.has(f)) && (
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-red-950/30 border-b border-red-800/30 text-xs">
+                      <span className="text-red-300">
+                        <ScanSearch className="w-3 h-3 inline mr-1" />
+                        {gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length} pending patch{gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length > 1 ? "es" : ""}
+                      </span>
+                      <div className="flex gap-2">
+                        <button onClick={acceptAllGex} className="text-green-400 hover:text-green-300 font-medium" data-testid="button-accept-all-patches">Accept All</button>
+                        <button onClick={clearGexPatches} className="text-muted-foreground hover:text-foreground" data-testid="button-dismiss-patches">Dismiss</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden relative">
+                    {isLoadingFile ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" />
+                      </div>
+                    ) : selectedFile && gexModifiedFiles.includes(selectedFile) && !gexPatchAccepted.has(selectedFile) && gexSnapshots[selectedFile] !== undefined ? (
+                      <div className="h-full flex flex-col">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-red-950/20 border-b border-red-800/20 text-xs">
+                          <div className="flex items-center gap-2 text-red-300">
+                            <FileWarning className="w-3.5 h-3.5" />
+                            <span>_Gex changes — review diff below</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => acceptGexFile(selectedFile)}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-600/80 hover:bg-green-500 text-white text-xs font-medium transition-colors"
+                              data-testid="button-diff-accept"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />Accept
+                            </button>
+                            <button
+                              onClick={() => revertGexFile(selectedFile)}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/80 hover:bg-red-500 text-white text-xs font-medium transition-colors"
+                              data-testid="button-diff-revert"
+                            >
+                              <RotateCcw className="w-3 h-3" />Revert
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <DiffEditor
+                            key={`diff-${selectedFile}`}
+                            height="100%"
+                            language={getLanguageFromPath(selectedFile || "")}
+                            original={gexSnapshots[selectedFile] || ""}
+                            modified={fileContent}
+                            theme="vs-dark"
+                            keepCurrentOriginalModel={true}
+                            keepCurrentModifiedModel={true}
+                            options={{
+                              readOnly: false,
+                              renderSideBySide: true,
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              lineNumbers: "on",
+                              scrollBeyondLastLine: false,
+                              automaticLayout: true,
+                              originalEditable: false,
+                              padding: { top: 8, bottom: 8 }
+                            }}
+                            onMount={(editor) => {
+                              if (diffContentDisposableRef.current) {
+                                diffContentDisposableRef.current.dispose();
+                                diffContentDisposableRef.current = null;
+                              }
+                              const modified = editor.getModifiedEditor();
+                              diffContentDisposableRef.current = modified.onDidChangeModelContent(() => {
+                                setFileContent(modified.getValue());
+                              });
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <Editor
+                        height="100%"
+                        language={getLanguageFromPath(selectedFile || "")}
+                        defaultValue={fileContent}
+                        onChange={(v) => setFileContentDebounced(v || "")}
+                        theme="vs-dark"
+                        options={{ minimap: { enabled: true }, fontSize: 14, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", automaticLayout: true, padding: { top: 8, bottom: 8 } }}
+                        data-testid="editor-file-content"
+                        key={`desktop-editor-${selectedFile}`}
+                        onMount={(editor) => { editorRef.current = editor; }}
+                      />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <Code2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>Select a file to edit</p>
+                  </div>
+                </div>
+              )}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={35} minSize={20}>
+                {renderBottomDock()}
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={35} minSize={25}>
+            <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+                <TabsList className="qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full">
+                  <TabsTrigger value="chat" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-chat">
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
+                    {messages.length > 0 && <span className="qw-tab-count ml-1.5">{messages.length}</span>}
+                  </TabsTrigger>
+                  {isEnterprise && (
+                    <TabsTrigger value="deploy" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-sky-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-deploy">
+                      <Rocket className="w-3.5 h-3.5 mr-1.5" />Manage
+                    </TabsTrigger>
+                  )}
+                  {isEnterprise && (
+                    <TabsTrigger value="ledger" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-amber)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-ledger">
+                      <ScrollText className="w-3.5 h-3.5 mr-1.5" />Ledger
+                    </TabsTrigger>
+                  )}
+                  <TabsTrigger value="artifacts" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-violet)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-artifacts">
+                    <Package className="w-3.5 h-3.5 mr-1.5" />Artifacts
+                    {ksArtifacts.length > 0 && <span className="qw-tab-count ml-1.5">{ksArtifacts.length}</span>}
+                  </TabsTrigger>
+                  <TabsTrigger value="settings" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-orange-400 data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-settings">
+                    <Settings className="w-3.5 h-3.5 mr-1.5" />Settings
+                  </TabsTrigger>
+                </TabsList>
+
+                  <TabsContent value="chat" className="flex-1 flex flex-col m-0 overflow-hidden relative">
+                    {renderChatPanel()}
+                  </TabsContent>
+
+                  {isEnterprise && (
+                    <TabsContent value="deploy" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderDeployTab()}
+                    </TabsContent>
+                  )}
+
+                  {isEnterprise && (
+                    <TabsContent value="ledger" className="flex-1 flex flex-col m-0 overflow-hidden">
+                      {renderLedgerTab()}
+                    </TabsContent>
+                  )}
+
+                  <TabsContent value="artifacts" className="flex-1 flex flex-col m-0 overflow-hidden">
+                    <div className="p-4 space-y-3 overflow-y-auto flex-1" data-testid="panel-artifacts-ks">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-foreground">Saved Artifacts</h3>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" onClick={loadKsArtifacts} title="Refresh">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      {ksArtifactsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
+                        </div>
+                      ) : ksArtifacts.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          <Package className="w-7 h-7 mx-auto mb-2 opacity-50" />
+                          <p>No artifacts yet</p>
+                          <p className="text-xs mt-1 opacity-60">Save code from Playground to see them here</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {ksArtifacts.map((artifact) => (
+                            <div key={artifact.id} className="bg-muted/30 border border-border rounded-lg p-3 group hover:border-violet-500/30 transition-colors">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  {renamingKsArtifactId === artifact.id ? (
+                                    <input
+                                      type="text"
+                                      value={renameKsArtifactValue}
+                                      onChange={(e) => setRenameKsArtifactValue(e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") submitKsArtifactRename(); if (e.key === "Escape") setRenamingKsArtifactId(null); }}
+                                      onBlur={submitKsArtifactRename}
+                                      autoFocus
+                                      className="w-full bg-muted border border-violet-500/40 rounded px-1.5 py-0.5 text-sm text-foreground focus:outline-none focus:border-violet-400 min-w-0"
+                                      data-testid={`input-rename-ks-artifact-${artifact.id}`}
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-foreground truncate cursor-text hover:text-violet-300 transition-colors" onClick={() => startKsArtifactRename(artifact.id, artifact.name)} data-testid={`text-ks-artifact-${artifact.id}`}>{artifact.name}</p>
+                                  )}
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">{artifact.target_stack || "text"}</p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                                  onClick={() => importArtifactToEnv(artifact)}
+                                  disabled={ksImporting === artifact.id}
+                                  data-testid={`button-import-artifact-${artifact.id}`}
+                                >
+                                  {ksImporting === artifact.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <><Download className="w-3 h-3 mr-1" />Import</>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="settings" className="flex-1 flex flex-col m-0 overflow-hidden">
+                    {renderSettingsContent()}
+                  </TabsContent>
+              </Tabs>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );

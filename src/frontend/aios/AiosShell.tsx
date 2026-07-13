@@ -33,6 +33,7 @@ import PolicySnapshots from "../v1/pages/PolicySnapshots";
 import ChangeLog from "../v1/pages/ChangeLog";
 import QuestsPortal from "../v1/pages/QuestsPortal";
 import QuestsWorkspace from "../v1/pages/QuestsWorkspace";
+import KeystoneLiteWorkspace from "../v1/pages/KeystoneLiteWorkspace";
 import ToolsHub from "../v1/pages/ToolsHub";
 import LeadsPage from "../v1/pages/LeadsPage";
 import FlashCards from "../v1/pages/FlashCards";
@@ -190,7 +191,7 @@ function KeystoneApp() {
         initial="/keystone"
         routes={[
           { pattern: "/keystone", component: KeystonePortalPage },
-          { pattern: "/keystone/:id", component: QuestsWorkspace },
+          { pattern: "/keystone/:id", component: KeystoneLiteWorkspace },
         ]}
       />
     </div>
