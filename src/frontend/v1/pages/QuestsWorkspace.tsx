@@ -2657,7 +2657,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col h-full"
+        className="flex flex-col h-full min-h-0 qw-panel-body"
         data-testid="tab-content-ledger"
       >
         <div className="flex items-center gap-2 p-3 border-b" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(0,0,0,.25)" }}>
@@ -2751,11 +2751,10 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     // class is missing from the prebuilt stylesheet or a merge drops one:
     // the desktop tab chain collapsed exactly this way (missing minHeight).
     <div
-      className="qw-chat-root absolute inset-0 flex flex-col overflow-hidden"
+      className="qw-chat-root flex flex-col overflow-hidden h-full"
       style={{
-        position: "absolute", top: 0, right: 0, bottom: 0, left: 0,
         display: "flex", flexDirection: "column", overflow: "hidden",
-        minHeight: 0, height: "100%",
+        minHeight: 0, height: "100%", flex: "1 1 0%",
         background: "linear-gradient(180deg, rgba(18,212,138,.04), transparent 140px)",
       }}
     >
@@ -2776,7 +2775,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         ref={chatContainerRef}
         onScroll={handleChatScroll}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
-        style={{ flex: "1 1 0%", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}
+        style={{ flex: "1 1 0%", minHeight: 0, height: "100%", overflowY: "auto", overflowX: "hidden" }}
       >
         <div className={`qw-chat-list ${compact ? "compact" : ""} min-w-0 max-w-full overflow-hidden`}>
           {messages.length === 0 ? (
@@ -4003,7 +4002,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
           <ResizablePanel defaultSize={38} minSize={28}>
             <div className="h-full min-h-0 flex flex-col qw-agent-rail min-w-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full min-h-0 flex-1" style={{ height: "100%", minHeight: 0, flex: "1 1 0%", display: "flex", flexDirection: "column" }}>
                 <TabsList className="qw-agent-tabs border-b border-[var(--qw-line)] rounded-none bg-black/25 h-auto p-0 px-1.5 flex-shrink-0 flex flex-nowrap overflow-x-auto justify-start w-full">
                   <TabsTrigger value="chat" className="qw-agent-tab rounded-none border-b-2 border-transparent data-[state=active]:border-[var(--qw-emerald)] data-[state=active]:bg-transparent data-[state=active]:text-foreground px-3 py-2.5 text-[11.5px] font-semibold shrink-0" data-testid="tab-chat">
                     <MessageSquare className="w-3.5 h-3.5 mr-1.5" />Chat
@@ -4027,24 +4026,24 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </TabsTrigger>
                 </TabsList>
 
-                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative" style={{ flex: "1 1 0%", minHeight: 0, position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", margin: 0 }}>
+                  <TabsContent value="chat" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", margin: 0 }}>
                     {renderChatPanel()}
                   </TabsContent>
 
-                  <TabsContent value="terminal" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                  <TabsContent value="terminal" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                     {renderTerminalTab()}
                   </TabsContent>
 
-                  <TabsContent value="deploy" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                  <TabsContent value="deploy" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                     {renderDeployTab()}
                   </TabsContent>
 
-                  <TabsContent value="ledger" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
+                  <TabsContent value="ledger" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                     {renderLedgerTab()}
                   </TabsContent>
 
-                  <TabsContent value="artifacts" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0 }}>
-                    <div className="p-4 space-y-3 overflow-y-auto flex-1 qw-panel-body" data-testid="panel-artifacts-ks">
+                  <TabsContent value="artifacts" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                    <div className="p-4 space-y-3 overflow-y-auto flex-1 min-h-0 qw-panel-body" style={{ flex: "1 1 0%", minHeight: 0 }} data-testid="panel-artifacts-ks">
                       <div className="flex items-center justify-between mb-1">
                         <div>
                           <div className="qw-panel-kicker">Artifacts</div>
@@ -4108,7 +4107,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="settings" className="flex-1 flex flex-col m-0 overflow-hidden">
+                  <TabsContent value="settings" className="flex-1 min-h-0 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden" style={{ flex: "1 1 0%", minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
                     {renderSettingsContent()}
                   </TabsContent>
               </Tabs>

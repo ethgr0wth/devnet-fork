@@ -909,4 +909,55 @@
 }
 .qw-pkg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+
+/* Height-chain safety net — every panel fills its rail */
+.qw-agent-rail { min-height: 0; }
+.qw-agent-rail > [role="tablist"] { flex-shrink: 0; }
+.qw-agent-rail [role="tabpanel"] {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+/* Each panel's motion root fills the tabpanel */
+.qw-agent-rail [role="tabpanel"] > [data-testid^="tab-content-"],
+.qw-agent-rail [role="tabpanel"] > .qw-panel-body,
+.qw-agent-rail [role="tabpanel"] > div {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+/* Artifacts inner scroll region */
+.qw-agent-rail [data-testid="panel-artifacts-ks"] {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+/* Chat specifics */
+.qw-chat-root {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+.qw-chat-root > div {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+.qw-chat-status { flex-shrink: 0; }
+.qw-composer { flex-shrink: 0; }
+/* Terminal splits */
+.qw-agent-rail [data-testid="tab-content-terminal"] > div { flex: 1 1 0%; min-height: 0; }
+/* Ledger / deploy / settings scroll bodies */
+.qw-agent-rail [data-testid="tab-content-ledger"] > div:last-child,
+.qw-agent-rail [data-testid="tab-content-deploy"] > div:last-child,
+.qw-agent-rail [data-testid="tab-content-settings"] > div {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
 /* END_KEYSTONE_2027_BUNDLE */
