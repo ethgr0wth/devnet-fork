@@ -7002,6 +7002,320 @@ async def get_thread_replies(group_id: str, root_message_id: str, x_auth_hash: O
     meta = json.loads(str(meta_raw)) if meta_raw else {}
     return JSONResponse({"root": root_msg, "replies": replies, "meta": meta})
 
+# ── KeyStone checkpoints: stash-to-zip → nedb ("NEDB has time travel") ──────
+# Strategy (Mark): zip the environment's files, store the zip IN NEDB with a
+# version string + microsecond timestamp + micronotes (per-file sizes, trigger,
+# note). Restore = unzip → staged overwrite (unpack / overwrite / prune) pushed
+# back upstream through the same keystone file APIs. The user doesn't see the
+# machinery — the UI just shows "stash vN ✓" and restore phase ticks.
+
+_KS_CKPT_META = "ks_ckpt_meta"
+_KS_CKPT_ZIP = "ks_ckpt_zip"
+_KS_CKPT_MAX_FILES = 2000
+_KS_CKPT_MAX_FILE_BYTES = 8 * 1024 * 1024      # skip single files above 8MB (Mark: nothing >6MB)
+_KS_CKPT_MAX_ZIP_BYTES = 32 * 1024 * 1024      # hard cap on stored zip
+_KS_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+
+try:
+    from src.nedb import NedbdClient as _KsNedbClient
+except ImportError:
+    from nedb import NedbdClient as _KsNedbClient
+
+
+def _ks_nedb() -> "_KsNedbClient":
+    return _KsNedbClient(
+        base=os.environ.get("NEDBD_URL", "http://localhost:7070"),
+        token=os.environ.get("NEDBD_TOKEN"),
+        db=os.environ.get("NEDB_DB", "devnet"))
+
+
+def _ks_token(request: Request) -> str:
+    token = request.headers.get("X-Auth-Hash") \
+        or request.headers.get("X-Session-Token") \
+        or request.cookies.get("session_id") or ""
+    if not token or token.startswith("dvs_"):
+        raise HTTPException(status_code=401,
+                            detail="keystone checkpoints require a federated AiAS session")
+    return token
+
+
+async def _ks_upstream(token: str, method: str, url: str,
+                       json_body: Optional[dict] = None) -> httpx.Response:
+    headers = {"X-Session-Token": token, "Cookie": f"session_id={token}"}
+    try:
+        async with governor.slot():
+            resp = await _aias_ahttp.request(method, url, headers=headers,
+                                             json=json_body)
+        governor.record(True)
+        return resp
+    except UpstreamDown as e:
+        raise HTTPException(status_code=503,
+                            detail=f"AiAS upstream busy — backing off ({e.reason})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        governor.record(False)
+        raise HTTPException(status_code=502,
+                            detail=f"AiAS upstream error: {type(e).__name__}")
+
+
+def _ks_walk_tree(node: dict, out: list) -> None:
+    if not isinstance(node, dict):
+        return
+    if node.get("type") == "file":
+        out.append({"path": node.get("path", ""), "size": int(node.get("size") or 0)})
+        return
+    for child in node.get("children") or []:
+        _ks_walk_tree(child, out)
+
+
+async def _ks_assert_env_access(token: str, env_id: str) -> None:
+    resp = await _ks_upstream(token, "GET", f"/api/keystone/environments/{env_id}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code,
+                            detail="environment not found or access denied")
+
+
+def _ks_validate_id(value: str, label: str) -> str:
+    if not value or not _KS_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"invalid {label}")
+    return value
+
+
+@app.post("/api/keystone/environments/{env_id}/checkpoints")
+async def ks_checkpoint_create(env_id: str, request: Request):
+    """Stash the environment to a zip and store it in nedb, versioned."""
+    import io
+    import zipfile
+
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    trigger = str((body or {}).get("trigger") or "manual")[:40]
+    note = str((body or {}).get("note") or "")[:200]
+
+    tree_resp = await _ks_upstream(
+        token, "GET", f"/api/keystone/environments/{env_id}/files/tree")
+    if tree_resp.status_code >= 400:
+        raise HTTPException(status_code=tree_resp.status_code,
+                            detail="environment not found or access denied")
+    tree = (tree_resp.json() or {}).get("tree") or {}
+    entries: list[dict] = []
+    _ks_walk_tree(tree, entries)
+    if len(entries) > _KS_CKPT_MAX_FILES:
+        raise HTTPException(status_code=413,
+                            detail=f"too many files to stash ({len(entries)} > {_KS_CKPT_MAX_FILES})")
+
+    skipped: list[dict] = []
+    to_read = []
+    for e in entries:
+        if e["size"] > _KS_CKPT_MAX_FILE_BYTES:
+            skipped.append({"path": e["path"], "reason": "too large"})
+        else:
+            to_read.append(e)
+
+    sem = asyncio.Semaphore(6)
+    contents: dict[str, str] = {}
+
+    async def _read_one(entry: dict) -> None:
+        async with sem:
+            r = await _ks_upstream(
+                token, "GET",
+                f"/api/keystone/environments/{env_id}/files/read?path={httpx.QueryParams({'p': entry['path']})['p']}")
+        if r.status_code >= 400:
+            skipped.append({"path": entry["path"], "reason": f"read {r.status_code}"})
+            return
+        payload = r.json() or {}
+        if payload.get("content") is None:
+            skipped.append({"path": entry["path"], "reason": "binary"})
+            return
+        contents[entry["path"]] = payload["content"]
+
+    await asyncio.gather(*[_read_one(e) for e in to_read])
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path, content in sorted(contents.items()):
+            zf.writestr(path, content)
+    zip_bytes = buf.getvalue()
+    if len(zip_bytes) > _KS_CKPT_MAX_ZIP_BYTES:
+        raise HTTPException(status_code=413,
+                            detail=f"stash zip too large ({len(zip_bytes)} bytes)")
+
+    nedb = _ks_nedb()
+    try:
+        existing = nedb.query(
+            f'FROM {_KS_CKPT_META} WHERE env_id = "{env_id}"')
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline — checkpoint not stored")
+    version_n = len(existing) + 1
+    now = datetime.utcnow()
+    ts_iso = now.isoformat(timespec="microseconds") + "Z"
+    ts_ms = int(now.timestamp() * 1000)
+    ckpt_id = f"ckpt:{env_id}:{ts_ms}:{uuid.uuid4().hex[:8]}"
+    version = f"v{version_n}"
+    vstring = f"{version}+{ts_iso}"
+    raw_bytes = sum(len(c.encode("utf-8", errors="replace")) for c in contents.values())
+
+    meta_doc = {
+        "kind": "ks_checkpoint",
+        "env_id": env_id,
+        "version": version,
+        "version_n": version_n,
+        "vstring": vstring,
+        "ts_iso": ts_iso,
+        "ts_ms": ts_ms,
+        "trigger": trigger,
+        "note": note,
+        "file_count": len(contents),
+        "skipped": skipped[:50],
+        "raw_bytes": raw_bytes,
+        "zip_bytes": len(zip_bytes),
+        "files": [{"path": p, "size": len(c.encode("utf-8", errors="replace"))}
+                  for p, c in sorted(contents.items())][:500],
+    }
+    zip_doc = {
+        "kind": "ks_checkpoint_zip",
+        "env_id": env_id,
+        "vstring": vstring,
+        "zip_b64": base64.b64encode(zip_bytes).decode("ascii"),
+    }
+    try:
+        result = nedb.tx([
+            {"op": "put", "coll": _KS_CKPT_META, "id": ckpt_id, "doc": meta_doc},
+            {"op": "put", "coll": _KS_CKPT_ZIP, "id": ckpt_id, "doc": zip_doc},
+        ], client="devnet-ksckpt")
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline — checkpoint not stored")
+    if result.get("_status", 200) >= 400 or result.get("error"):
+        raise HTTPException(status_code=502,
+                            detail=f"nedb rejected checkpoint: {str(result.get('error'))[:200]}")
+
+    return {"checkpoint_id": ckpt_id, "version": version, "vstring": vstring,
+            "ts_iso": ts_iso, "ts_ms": ts_ms, "file_count": len(contents),
+            "skipped": len(skipped), "zip_bytes": len(zip_bytes), "trigger": trigger}
+
+
+@app.get("/api/keystone/environments/{env_id}/checkpoints")
+async def ks_checkpoint_list(env_id: str, request: Request):
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    await _ks_assert_env_access(token, env_id)
+    nedb = _ks_nedb()
+    try:
+        rows = nedb.query(f'FROM {_KS_CKPT_META} WHERE env_id = "{env_id}"')
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline")
+    rows.sort(key=lambda r: r.get("ts_ms") or 0, reverse=True)
+    checkpoints = [{
+        "checkpoint_id": r.get("_id"),
+        "version": r.get("version"),
+        "vstring": r.get("vstring"),
+        "ts_iso": r.get("ts_iso"),
+        "ts_ms": r.get("ts_ms"),
+        "trigger": r.get("trigger"),
+        "note": r.get("note"),
+        "file_count": r.get("file_count"),
+        "zip_bytes": r.get("zip_bytes"),
+        "skipped": len(r.get("skipped") or []),
+    } for r in rows[:100]]
+    return {"checkpoints": checkpoints, "total": len(rows)}
+
+
+@app.post("/api/keystone/environments/{env_id}/checkpoints/{ckpt_id}/restore")
+async def ks_checkpoint_restore(env_id: str, ckpt_id: str, request: Request):
+    """Unzip a stashed checkpoint and overwrite the environment in stages:
+    unpack → overwrite (writes) → prune (delete files not in the stash)."""
+    import io
+    import zipfile
+
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    _ks_validate_id(ckpt_id, "checkpoint id")
+
+    nedb = _ks_nedb()
+    try:
+        meta = nedb.get_doc(_KS_CKPT_META, ckpt_id)
+        zdoc = nedb.get_doc(_KS_CKPT_ZIP, ckpt_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline")
+    if not meta or not zdoc or meta.get("env_id") != env_id or zdoc.get("env_id") != env_id:
+        raise HTTPException(status_code=404, detail="checkpoint not found")
+
+    # authz + current file list (needed for the prune phase)
+    tree_resp = await _ks_upstream(
+        token, "GET", f"/api/keystone/environments/{env_id}/files/tree")
+    if tree_resp.status_code >= 400:
+        raise HTTPException(status_code=tree_resp.status_code,
+                            detail="environment not found or access denied")
+    current: list[dict] = []
+    _ks_walk_tree((tree_resp.json() or {}).get("tree") or {}, current)
+
+    # phase 1: unpack
+    try:
+        zip_bytes = base64.b64decode(zdoc.get("zip_b64") or "")
+        entries: dict[str, str] = {}
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for name in zf.namelist():
+                if name.endswith("/"):
+                    continue
+                entries[name] = zf.read(name).decode("utf-8", errors="replace")
+    except Exception:
+        raise HTTPException(status_code=500, detail="stash zip is corrupt")
+
+    sem = asyncio.Semaphore(6)
+    failures: list[dict] = []
+
+    # phase 2: overwrite
+    written = 0
+
+    async def _write_one(path: str, content: str) -> bool:
+        async with sem:
+            r = await _ks_upstream(
+                token, "POST",
+                f"/api/keystone/environments/{env_id}/files/write",
+                json_body={"path": path, "content": content})
+        if r.status_code >= 400:
+            failures.append({"path": path, "phase": "overwrite", "status": r.status_code})
+            return False
+        return True
+
+    results = await asyncio.gather(*[_write_one(p, c) for p, c in entries.items()])
+    written = sum(1 for ok in results if ok)
+
+    # phase 3: prune — current files not present in the stash get deleted
+    stash_paths = set(entries.keys())
+    prune_targets = [e["path"] for e in current
+                     if e["path"] not in stash_paths and e["path"]]
+    pruned = 0
+
+    async def _prune_one(path: str) -> bool:
+        async with sem:
+            r = await _ks_upstream(
+                token, "DELETE",
+                f"/api/keystone/environments/{env_id}/files/delete?path={httpx.QueryParams({'p': path})['p']}")
+        if r.status_code >= 400:
+            failures.append({"path": path, "phase": "prune", "status": r.status_code})
+            return False
+        return True
+
+    prune_results = await asyncio.gather(*[_prune_one(p) for p in prune_targets])
+    pruned = sum(1 for ok in prune_results if ok)
+
+    return {
+        "restored": True,
+        "checkpoint_id": ckpt_id,
+        "version": meta.get("version"),
+        "vstring": meta.get("vstring"),
+        "phases": {"unpack": len(entries), "overwrite": written, "prune": pruned},
+        "failures": failures[:50],
+    }
+
+
 # ── The same-origin v1 proxy (Mark: "every v1 surface belongs on devnet") ────
 # The transplanted v1 pages call RELATIVE /api paths — their original v1
 # form. Devnet serves its own routes first; anything matching a v1 prefix

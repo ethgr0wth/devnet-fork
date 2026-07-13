@@ -112082,6 +112082,22 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
 
   // src/frontend/v1/pages/KeystoneLiteWorkspace.tsx
   var import_jsx_runtime82 = __toESM(require_jsx_runtime());
+  function fmtAgo(ts) {
+    const s2 = Math.floor((Date.now() - ts) / 1e3);
+    if (s2 < 5) return "just now";
+    if (s2 < 60) return `${s2}s ago`;
+    const m = Math.floor(s2 / 60);
+    if (m < 60) return `${m}m ago`;
+    const h3 = Math.floor(m / 60);
+    if (h3 < 24) return `${h3}h ago`;
+    return `${Math.floor(h3 / 24)}d ago`;
+  }
+  function fmtBytes(n) {
+    if (!n && n !== 0) return "\u2014";
+    if (n < 1024) return `${n}B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+  }
   var EXT_LANG = {
     py: "python",
     js: "javascript",
@@ -112144,6 +112160,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     const [chatError, setChatError] = (0, import_react71.useState)(null);
     const [agentChanges, setAgentChanges] = (0, import_react71.useState)({});
     const snapshotsRef = (0, import_react71.useRef)({});
+    const [lastStash, setLastStash] = (0, import_react71.useState)(null);
+    const [stashing, setStashing] = (0, import_react71.useState)(false);
+    const [historyOpen, setHistoryOpen] = (0, import_react71.useState)(false);
+    const [ckpts, setCkpts] = (0, import_react71.useState)([]);
+    const [ckptsLoading, setCkptsLoading] = (0, import_react71.useState)(false);
+    const [restoringId, setRestoringId] = (0, import_react71.useState)(null);
+    const [confirmRestoreId, setConfirmRestoreId] = (0, import_react71.useState)(null);
     const streamAbortRef = (0, import_react71.useRef)(null);
     const chatEndRef = (0, import_react71.useRef)(null);
     const autoScrollRef = (0, import_react71.useRef)(true);
@@ -112242,6 +112265,100 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         setRuntimeStatus("error");
       }
     }, [envId]);
+    const stashCheckpoint = (0, import_react71.useCallback)(
+      async (trigger, note) => {
+        setStashing(true);
+        try {
+          const r3 = await apiFetch(
+            `/api/keystone/environments/${envId}/checkpoints`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ trigger, note })
+            }
+          );
+          if (r3.ok) {
+            const d2 = await r3.json();
+            setLastStash({ version: d2.version, ts: Date.now() });
+            return d2;
+          }
+        } catch {
+        } finally {
+          setStashing(false);
+        }
+        return null;
+      },
+      [envId]
+    );
+    const loadCheckpoints = (0, import_react71.useCallback)(async () => {
+      setCkptsLoading(true);
+      try {
+        const r3 = await apiFetch(
+          `/api/keystone/environments/${envId}/checkpoints`
+        );
+        if (r3.ok) setCkpts((await r3.json()).checkpoints || []);
+      } catch {
+      } finally {
+        setCkptsLoading(false);
+      }
+    }, [envId]);
+    const restoreCheckpoint = async (ck) => {
+      setConfirmRestoreId(null);
+      setRestoringId(ck.checkpoint_id);
+      try {
+        const r3 = await apiFetch(
+          `/api/keystone/environments/${envId}/checkpoints/${encodeURIComponent(
+            ck.checkpoint_id
+          )}/restore`,
+          { method: "POST" }
+        );
+        if (!r3.ok) {
+          const err = await r3.json().catch(() => ({}));
+          throw new Error(err.detail || `Restore failed (${r3.status})`);
+        }
+        const d2 = await r3.json();
+        await loadFileTree();
+        const gone = [];
+        const updated = {};
+        for (const p of openTabs) {
+          try {
+            const rr = await apiFetch(
+              `/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(p)}`
+            );
+            if (!rr.ok) {
+              gone.push(p);
+              continue;
+            }
+            const dd = await rr.json();
+            const c2 = dd.content ?? "";
+            updated[p] = { content: c2, original: c2 };
+          } catch {
+            gone.push(p);
+          }
+        }
+        setTabContents((prev) => {
+          const next = { ...prev, ...updated };
+          for (const g of gone) delete next[g];
+          return next;
+        });
+        if (gone.length) {
+          const nextTabs = openTabs.filter((p) => !gone.includes(p));
+          setOpenTabs(nextTabs);
+          if (activePath && gone.includes(activePath))
+            setActivePath(nextTabs[nextTabs.length - 1] || null);
+        }
+        setAgentChanges({});
+        snapshotsRef.current = {};
+        toast.success(
+          `Restored ${ck.version} \u2014 ${d2.phases?.overwrite ?? 0} written, ${d2.phases?.prune ?? 0} pruned`
+        );
+        setHistoryOpen(false);
+      } catch (e) {
+        toast.error(e?.message || "Restore failed");
+      } finally {
+        setRestoringId(null);
+      }
+    };
     (0, import_react71.useEffect)(() => {
       if (!envId || isMobile) return;
       loadEnvironment();
@@ -112442,6 +112559,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         { id: draftId, role: "assistant", content: "", timestamp: (/* @__PURE__ */ new Date()).toISOString() }
       ]);
       setSending(true);
+      await stashCheckpoint("agent-turn", text8.slice(0, 120));
       let fullContent = "";
       const touched = /* @__PURE__ */ new Set();
       const writtenSet = /* @__PURE__ */ new Set();
@@ -112769,6 +112887,100 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               }
             ),
             runtimeStatus === "ready" ? "runtime ready" : runtimeStatus === "connecting" ? "connecting\u2026" : "runtime offline"
+          ] }),
+          lastStash && /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(
+            "span",
+            {
+              className: "flex items-center gap-1 rounded border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 text-[10px] text-cyan-300/80",
+              "data-testid": "ksl-last-stash",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(Archive, { className: "h-2.5 w-2.5" }),
+                "stash ",
+                lastStash.version,
+                " \u2713"
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "relative", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+              "button",
+              {
+                onClick: () => {
+                  const next = !historyOpen;
+                  setHistoryOpen(next);
+                  setConfirmRestoreId(null);
+                  if (next) loadCheckpoints();
+                },
+                className: `rounded p-1.5 hover:bg-white/5 ${historyOpen ? "bg-white/5 text-cyan-300" : "text-zinc-500 hover:text-zinc-200"}`,
+                title: "Time travel \u2014 stashed versions",
+                "data-testid": "ksl-history",
+                children: /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(History, { className: "h-3.5 w-3.5" })
+              }
+            ),
+            historyOpen && /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(import_jsx_runtime82.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                "div",
+                {
+                  className: "fixed inset-0 z-40",
+                  onClick: () => setHistoryOpen(false)
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "absolute right-0 top-full z-50 mt-1 w-[340px] rounded-md border border-white/10 bg-[#101018] shadow-xl", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "flex items-center justify-between border-b border-white/5 px-3 py-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-[10px] font-semibold uppercase tracking-widest text-zinc-400", children: "Time travel" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-[9.5px] text-zinc-600", children: "stash \u2192 nedb \xB7 restore on demand" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "max-h-[320px] overflow-y-auto p-1.5", children: ckptsLoading ? /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "flex items-center gap-2 px-2 py-3 text-[11px] text-zinc-500", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(LoaderCircle, { className: "h-3 w-3 animate-spin" }),
+                  " loading versions\u2026"
+                ] }) : ckpts.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "px-2 py-3 text-[11px] text-zinc-600", children: "No stashes yet \u2014 one is taken automatically before every agent turn." }) : ckpts.map((ck) => /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)(
+                  "div",
+                  {
+                    className: "group rounded px-2 py-1.5 hover:bg-white/[0.03]",
+                    "data-testid": `ckpt-row-${ck.checkpoint_id}`,
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "flex items-center gap-2", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "font-mono text-[11px] font-semibold text-cyan-300", children: ck.version }),
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-[10px] text-zinc-500", children: fmtAgo(ck.ts_ms) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("span", { className: "text-[9.5px] text-zinc-600", children: [
+                          ck.file_count,
+                          " files \xB7 ",
+                          fmtBytes(ck.zip_bytes),
+                          ck.skipped ? ` \xB7 ${ck.skipped} skipped` : ""
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "ml-auto", children: restoringId === ck.checkpoint_id ? /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("span", { className: "flex items-center gap-1 text-[10px] text-amber-300", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(LoaderCircle, { className: "h-3 w-3 animate-spin" }),
+                          "restoring\u2026"
+                        ] }) : confirmRestoreId === ck.checkpoint_id ? /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                          "button",
+                          {
+                            onClick: () => restoreCheckpoint(ck),
+                            disabled: !!restoringId,
+                            className: "rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25",
+                            "data-testid": `ckpt-confirm-${ck.checkpoint_id}`,
+                            children: "overwrite env?"
+                          }
+                        ) : /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
+                          "button",
+                          {
+                            onClick: () => setConfirmRestoreId(ck.checkpoint_id),
+                            disabled: !!restoringId,
+                            className: "rounded border border-white/10 px-2 py-0.5 text-[10px] text-zinc-400 opacity-0 hover:border-cyan-500/40 hover:text-cyan-300 group-hover:opacity-100",
+                            "data-testid": `ckpt-restore-${ck.checkpoint_id}`,
+                            children: "restore"
+                          }
+                        ) })
+                      ] }),
+                      (ck.note || ck.trigger) && /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("div", { className: "mt-0.5 truncate text-[10px] text-zinc-600", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-zinc-500", children: ck.trigger }),
+                        ck.note ? ` \u2014 ${ck.note}` : ""
+                      ] })
+                    ]
+                  },
+                  ck.checkpoint_id
+                )) })
+              ] })
+            ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(
             "button",
@@ -113204,7 +113416,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                 }
               )
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "mt-1 px-1 text-[9.5px] text-zinc-700", children: "Enter to send \xB7 Shift+Enter for newline \xB7 auto-apply on, revert anytime" })
+            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("div", { className: "mt-1 px-1 text-[9.5px] text-zinc-700", children: "Enter to send \xB7 Shift+Enter for newline \xB7 auto-apply on \xB7 every turn stashed for time travel" })
           ] })
         ] }) })
       ] }) }),
@@ -113236,6 +113448,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             messages2.length,
             " msgs"
           ] }),
+          stashing ? /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("span", { className: "flex items-center gap-1 text-amber-300/70", "data-testid": "ksl-stashing", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime82.jsx)(LoaderCircle, { className: "h-2.5 w-2.5 animate-spin" }),
+            " stashing\u2026"
+          ] }) : lastStash ? /* @__PURE__ */ (0, import_jsx_runtime82.jsxs)("span", { className: "text-cyan-400/60", "data-testid": "ksl-stash-status", children: [
+            "stash ",
+            lastStash.version,
+            " \xB7 ",
+            fmtAgo(lastStash.ts)
+          ] }) : null,
           /* @__PURE__ */ (0, import_jsx_runtime82.jsx)("span", { className: "text-emerald-400/70", children: "auto-approve on" })
         ] })
       ] })

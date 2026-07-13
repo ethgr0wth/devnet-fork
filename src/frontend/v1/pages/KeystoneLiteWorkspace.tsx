@@ -27,7 +27,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Send, File, Folder, FolderOpen,
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
   Zap, Bot, User, FileCode, FileJson, FileText, Trash2, Plus, Circle,
-  RotateCcw, CheckCircle2, Cpu, MessageSquare,
+  RotateCcw, CheckCircle2, Cpu, MessageSquare, History, Archive,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -50,6 +50,39 @@ import { apiFetch } from "@/lib/queryClient";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import QuestsWorkspace from "./QuestsWorkspace";
+
+// ── checkpoint (stash-to-zip → nedb time travel) types + helpers ────────────
+
+type Ckpt = {
+  checkpoint_id: string;
+  version: string;
+  vstring: string;
+  ts_iso: string;
+  ts_ms: number;
+  trigger: string;
+  note: string;
+  file_count: number;
+  zip_bytes: number;
+  skipped: number;
+};
+
+function fmtAgo(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function fmtBytes(n: number): string {
+  if (!n && n !== 0) return "—";
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +183,15 @@ export default function KeystoneLiteWorkspace() {
     Record<string, { snap: string; created: boolean }>
   >({});
   const snapshotsRef = useRef<Record<string, string>>({});
+  // time travel: every agent turn silently stashes the env to a zip in nedb;
+  // the pill + history panel are the visual layer over that machinery
+  const [lastStash, setLastStash] = useState<{ version: string; ts: number } | null>(null);
+  const [stashing, setStashing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [ckpts, setCkpts] = useState<Ckpt[]>([]);
+  const [ckptsLoading, setCkptsLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [confirmRestoreId, setConfirmRestoreId] = useState<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
@@ -264,6 +306,109 @@ export default function KeystoneLiteWorkspace() {
       setRuntimeStatus("error");
     }
   }, [envId]);
+
+  // ── checkpoints: stash-to-zip → nedb (time travel) ─────────────────────────
+
+  const stashCheckpoint = useCallback(
+    async (trigger: string, note: string) => {
+      setStashing(true);
+      try {
+        const r = await apiFetch(
+          `/api/keystone/environments/${envId}/checkpoints`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trigger, note }),
+          }
+        );
+        if (r.ok) {
+          const d = await r.json();
+          setLastStash({ version: d.version, ts: Date.now() });
+          return d;
+        }
+      } catch {
+        /* stash is best-effort — never blocks the turn */
+      } finally {
+        setStashing(false);
+      }
+      return null;
+    },
+    [envId]
+  );
+
+  const loadCheckpoints = useCallback(async () => {
+    setCkptsLoading(true);
+    try {
+      const r = await apiFetch(
+        `/api/keystone/environments/${envId}/checkpoints`
+      );
+      if (r.ok) setCkpts((await r.json()).checkpoints || []);
+    } catch {
+      /* panel shows empty */
+    } finally {
+      setCkptsLoading(false);
+    }
+  }, [envId]);
+
+  const restoreCheckpoint = async (ck: Ckpt) => {
+    setConfirmRestoreId(null);
+    setRestoringId(ck.checkpoint_id);
+    try {
+      const r = await apiFetch(
+        `/api/keystone/environments/${envId}/checkpoints/${encodeURIComponent(
+          ck.checkpoint_id
+        )}/restore`,
+        { method: "POST" }
+      );
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}) as any);
+        throw new Error(err.detail || `Restore failed (${r.status})`);
+      }
+      const d = await r.json();
+      // reload everything the restore may have touched
+      await loadFileTree();
+      const gone: string[] = [];
+      const updated: Record<string, { content: string; original: string }> = {};
+      for (const p of openTabs) {
+        try {
+          const rr = await apiFetch(
+            `/api/keystone/environments/${envId}/files/read?path=${encodeURIComponent(p)}`
+          );
+          if (!rr.ok) {
+            gone.push(p);
+            continue;
+          }
+          const dd = await rr.json();
+          const c = dd.content ?? "";
+          updated[p] = { content: c, original: c };
+        } catch {
+          gone.push(p);
+        }
+      }
+      setTabContents((prev) => {
+        const next = { ...prev, ...updated };
+        for (const g of gone) delete next[g];
+        return next;
+      });
+      if (gone.length) {
+        const nextTabs = openTabs.filter((p) => !gone.includes(p));
+        setOpenTabs(nextTabs);
+        if (activePath && gone.includes(activePath))
+          setActivePath(nextTabs[nextTabs.length - 1] || null);
+      }
+      // a full restore supersedes the per-message undo strip
+      setAgentChanges({});
+      snapshotsRef.current = {};
+      toast.success(
+        `Restored ${ck.version} — ${d.phases?.overwrite ?? 0} written, ${d.phases?.prune ?? 0} pruned`
+      );
+      setHistoryOpen(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Restore failed");
+    } finally {
+      setRestoringId(null);
+    }
+  };
 
   useEffect(() => {
     if (!envId || isMobile) return;
@@ -496,6 +641,10 @@ export default function KeystoneLiteWorkspace() {
       { id: draftId, role: "assistant", content: "", timestamp: new Date().toISOString() },
     ]);
     setSending(true);
+
+    // silent time-travel stash before the agent touches anything —
+    // the user just sees the pill tick over to the new version
+    await stashCheckpoint("agent-turn", text.slice(0, 120));
 
     let fullContent = "";
     const touched = new Set<string>();
@@ -904,6 +1053,120 @@ export default function KeystoneLiteWorkspace() {
                 ? "connecting…"
                 : "runtime offline"}
           </span>
+          {lastStash && (
+            <span
+              className="flex items-center gap-1 rounded border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 text-[10px] text-cyan-300/80"
+              data-testid="ksl-last-stash"
+            >
+              <Archive className="h-2.5 w-2.5" />
+              stash {lastStash.version} ✓
+            </span>
+          )}
+          <div className="relative">
+            <button
+              onClick={() => {
+                const next = !historyOpen;
+                setHistoryOpen(next);
+                setConfirmRestoreId(null);
+                if (next) loadCheckpoints();
+              }}
+              className={`rounded p-1.5 hover:bg-white/5 ${
+                historyOpen
+                  ? "bg-white/5 text-cyan-300"
+                  : "text-zinc-500 hover:text-zinc-200"
+              }`}
+              title="Time travel — stashed versions"
+              data-testid="ksl-history"
+            >
+              <History className="h-3.5 w-3.5" />
+            </button>
+            {historyOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setHistoryOpen(false)}
+                />
+                <div className="absolute right-0 top-full z-50 mt-1 w-[340px] rounded-md border border-white/10 bg-[#101018] shadow-xl">
+                  <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
+                      Time travel
+                    </span>
+                    <span className="text-[9.5px] text-zinc-600">
+                      stash → nedb · restore on demand
+                    </span>
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto p-1.5">
+                    {ckptsLoading ? (
+                      <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-zinc-500">
+                        <Loader2 className="h-3 w-3 animate-spin" /> loading
+                        versions…
+                      </div>
+                    ) : ckpts.length === 0 ? (
+                      <div className="px-2 py-3 text-[11px] text-zinc-600">
+                        No stashes yet — one is taken automatically before
+                        every agent turn.
+                      </div>
+                    ) : (
+                      ckpts.map((ck) => (
+                        <div
+                          key={ck.checkpoint_id}
+                          className="group rounded px-2 py-1.5 hover:bg-white/[0.03]"
+                          data-testid={`ckpt-row-${ck.checkpoint_id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] font-semibold text-cyan-300">
+                              {ck.version}
+                            </span>
+                            <span className="text-[10px] text-zinc-500">
+                              {fmtAgo(ck.ts_ms)}
+                            </span>
+                            <span className="text-[9.5px] text-zinc-600">
+                              {ck.file_count} files · {fmtBytes(ck.zip_bytes)}
+                              {ck.skipped ? ` · ${ck.skipped} skipped` : ""}
+                            </span>
+                            <span className="ml-auto">
+                              {restoringId === ck.checkpoint_id ? (
+                                <span className="flex items-center gap-1 text-[10px] text-amber-300">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  restoring…
+                                </span>
+                              ) : confirmRestoreId === ck.checkpoint_id ? (
+                                <button
+                                  onClick={() => restoreCheckpoint(ck)}
+                                  disabled={!!restoringId}
+                                  className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25"
+                                  data-testid={`ckpt-confirm-${ck.checkpoint_id}`}
+                                >
+                                  overwrite env?
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() =>
+                                    setConfirmRestoreId(ck.checkpoint_id)
+                                  }
+                                  disabled={!!restoringId}
+                                  className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-zinc-400 opacity-0 hover:border-cyan-500/40 hover:text-cyan-300 group-hover:opacity-100"
+                                  data-testid={`ckpt-restore-${ck.checkpoint_id}`}
+                                >
+                                  restore
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                          {(ck.note || ck.trigger) && (
+                            <div className="mt-0.5 truncate text-[10px] text-zinc-600">
+                              <span className="text-zinc-500">{ck.trigger}</span>
+                              {ck.note ? ` — ${ck.note}` : ""}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => { loadFileTree(); toast.info("Files refreshed"); }}
             className="rounded p-1.5 text-zinc-500 hover:bg-white/5 hover:text-zinc-200"
@@ -1444,7 +1707,7 @@ export default function KeystoneLiteWorkspace() {
                   )}
                 </div>
                 <div className="mt-1 px-1 text-[9.5px] text-zinc-700">
-                  Enter to send · Shift+Enter for newline · auto-apply on, revert anytime
+                  Enter to send · Shift+Enter for newline · auto-apply on · every turn stashed for time travel
                 </div>
               </div>
             </div>
@@ -1484,6 +1747,15 @@ export default function KeystoneLiteWorkspace() {
             </span>
           )}
           <span>{messages.length} msgs</span>
+          {stashing ? (
+            <span className="flex items-center gap-1 text-amber-300/70" data-testid="ksl-stashing">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" /> stashing…
+            </span>
+          ) : lastStash ? (
+            <span className="text-cyan-400/60" data-testid="ksl-stash-status">
+              stash {lastStash.version} · {fmtAgo(lastStash.ts)}
+            </span>
+          ) : null}
           <span className="text-emerald-400/70">auto-approve on</span>
         </span>
       </div>
