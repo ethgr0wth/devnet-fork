@@ -341,10 +341,6 @@ function BriefingWidget({ onOpen }: { onOpen: (appId: string) => void }) {
   return (
     <div className="mt-4 max-w-2xl space-y-1.5">
       {lines}
-      <p className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-zinc-600">
-        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400/80" />
-        The Briefing · composed live from v1 production + AiAssist Secure · refreshes every 30s
-      </p>
     </div>
   );
 }
