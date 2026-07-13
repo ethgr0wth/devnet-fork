@@ -112269,11 +112269,9 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       [envId, tabContents]
     );
     const closeTab = (path2) => {
-      setOpenTabs((prev) => {
-        const next = prev.filter((p) => p !== path2);
-        if (activePath === path2) setActivePath(next[next.length - 1] || null);
-        return next;
-      });
+      const next = openTabs.filter((p) => p !== path2);
+      setOpenTabs(next);
+      if (activePath === path2) setActivePath(next[next.length - 1] || null);
       setTabContents((prev) => {
         const { [path2]: _drop, ...rest2 } = prev;
         return rest2;
@@ -112338,10 +112336,17 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             ).then((r4) => r4.json());
             const c2 = r3.content ?? "";
             setOpenTabs((prev) => prev.includes(fp) ? prev : [...prev, fp]);
-            setTabContents((prev) => ({
-              ...prev,
-              [fp]: { content: c2, original: c2 }
-            }));
+            setTabContents((prev) => {
+              const existing = prev[fp];
+              if (existing && existing.content !== existing.original) {
+                toast.warning(
+                  `${baseName(fp)} changed by the agent \u2014 your unsaved edits kept (save to overwrite)`,
+                  { duration: 6e3 }
+                );
+                return { ...prev, [fp]: { ...existing, original: c2 } };
+              }
+              return { ...prev, [fp]: { content: c2, original: c2 } };
+            });
           } catch {
           }
         }

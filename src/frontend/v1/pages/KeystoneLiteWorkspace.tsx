@@ -292,11 +292,9 @@ export default function KeystoneLiteWorkspace() {
   );
 
   const closeTab = (path: string) => {
-    setOpenTabs((prev) => {
-      const next = prev.filter((p) => p !== path);
-      if (activePath === path) setActivePath(next[next.length - 1] || null);
-      return next;
-    });
+    const next = openTabs.filter((p) => p !== path);
+    setOpenTabs(next);
+    if (activePath === path) setActivePath(next[next.length - 1] || null);
     setTabContents((prev) => {
       const { [path]: _drop, ...rest } = prev;
       return rest;
@@ -367,10 +365,19 @@ export default function KeystoneLiteWorkspace() {
           ).then((r) => r.json());
           const c = r.content ?? "";
           setOpenTabs((prev) => (prev.includes(fp) ? prev : [...prev, fp]));
-          setTabContents((prev) => ({
-            ...prev,
-            [fp]: { content: c, original: c },
-          }));
+          setTabContents((prev) => {
+            const existing = prev[fp];
+            // don't clobber the user's unsaved edits in this tab — keep their
+            // buffer, but update `original` so the dirty marker stays honest
+            if (existing && existing.content !== existing.original) {
+              toast.warning(
+                `${baseName(fp)} changed by the agent — your unsaved edits kept (save to overwrite)`,
+                { duration: 6000 }
+              );
+              return { ...prev, [fp]: { ...existing, original: c } };
+            }
+            return { ...prev, [fp]: { content: c, original: c } };
+          });
         } catch {
           /* file may have been deleted */
         }
