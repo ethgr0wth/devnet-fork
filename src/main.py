@@ -7018,6 +7018,12 @@ V1_PROXY_PREFIXES = (
     "image", "tts", "voice", "voice-actions", "licenses", "subscription",
     "billing", "org", "quests", "code", "blog", "knowledge", "stats",
     "user",  # /api/user/me, /api/user/workspaces, usage, api-keys, ...
+    # VoiceSession (the real 2026-07-13 transplant) logs conversations into
+    # v1 workspaces (/api/workspaces, /by-client/, /{id}/messages). Devnet
+    # has NO native /api/workspaces routes (its social unit is groups/
+    # communities), so this is collision-free — and the proxy registers
+    # LAST regardless, so any future devnet route would still win.
+    "workspaces",
 )
 
 _PROXY_SKIP_REQ_HEADERS = {"host", "content-length", "connection",
