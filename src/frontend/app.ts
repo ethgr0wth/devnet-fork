@@ -1,6 +1,5 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { showAiasView, type AiasViewKey } from './aias';
 import { mountAios, unmountAios } from './aios/AiosShell';
 
 marked.setOptions({
@@ -3660,12 +3659,6 @@ class DevNetwork {
     });
   }
 
-  private showAias(view: AiasViewKey): void {
-    unmountAios();
-    this.setActiveNav(`nav-aias-${view}`);
-    this._currentView = `aias-${view}`;
-    void showAiasView(this.container, view);
-  }
 
   /** AiOS — the v2 surface. Default home after sign-in; the classic views
    *  stay one click away (dock + sidebar). */
