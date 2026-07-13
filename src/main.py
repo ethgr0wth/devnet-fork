@@ -172,7 +172,7 @@ GEPPETTO_USERNAME = "geppetto"
 BOT_TOKEN_PREFIX = "dvn_bot_"
 
 print("\n" + "="*50)
-print("  AiAssist Secure Configuration")
+print("  DevNetwork Configuration")
 print("="*50)
 print(f"  Storage:    {_storage.STORAGE_MODE}")
 if _storage.STORAGE_MODE == "redis":
@@ -1099,7 +1099,7 @@ def seed_platform_groups():
         system_user_id = str(uuid.uuid4())
         system_user = {
             "id": system_user_id,
-            "displayName": "AiAssist Secure",
+            "displayName": "DevNetwork",
             "bio": "Official platform account",
             "is_admin": True,
             "is_system": True,
@@ -1242,7 +1242,7 @@ def bootstrap_ecosystems():
         system_user_id = str(uuid.uuid4())
         system_user = {
             "id": system_user_id,
-            "displayName": "AiAssist Secure",
+            "displayName": "DevNetwork",
             "bio": "Official platform account",
             "is_admin": True,
             "is_superadmin": True,
@@ -1257,7 +1257,7 @@ def bootstrap_ecosystems():
         "id": DEVONE_ECOSYSTEM_ID,
         "name": "DevOne",
         "slug": "devone",
-        "description": "The default AiAssist Secure ecosystem",
+        "description": "The default DevNetwork ecosystem",
         "icon": "",
         "accent_color": "#10b981",
         "owner_id": system_user_id,
@@ -1335,7 +1335,7 @@ def init_geppetto():
     geppetto = {
         "id": GEPPETTO_ID,
         "displayName": "Geppetto",
-        "bio": "I help you create and manage bots on AiAssist Secure. DM me to get started!",
+        "bio": "I help you create and manage bots on DevNetwork. DM me to get started!",
         "field": "Bot Orchestration",
         "experience": "system",
         "skills": ["bot-management", "automation", "orchestration"],
@@ -1352,7 +1352,7 @@ def init_geppetto():
         "is_system_bot": True,
         "bot_data": {
             "operator_id": "system",
-            "purpose": "Bot orchestration console for AiAssist Secure. Create and manage your bots through conversational commands.",
+            "purpose": "Bot orchestration console for DevNetwork. Create and manage your bots through conversational commands.",
             "capabilities_declared": ["send_dm", "read_dm", "system_commands"],
             "capabilities_granted_global": ["send_dm", "read_dm", "system_commands"],
             "status": "active",
@@ -1997,7 +1997,7 @@ def handle_geppetto_command(user: dict, conv_id: str, content: str):
     elif content_lower == "/help" or content_lower == "help":
         return send_geppetto_reply(conv_id,
             "**🤖 Geppetto - Bot Management**\n\n" +
-            "I help you create and manage bots on AiAssist Secure.\n\n" +
+            "I help you create and manage bots on DevNetwork.\n\n" +
             "**Commands:**\n" +
             "• `/newbot` - Create a new bot\n" +
             "• `/mybots` - List your bots\n" +
@@ -5809,7 +5809,7 @@ async def bot_docs():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AiAssist Secure Bot API - Level Up Your Bot!</title>
+    <title>DevNetwork Bot API - Level Up Your Bot!</title>
     <link rel="icon" href="/static/favicon.png" type="image/png">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -5918,7 +5918,7 @@ async def bot_docs():
 <body>
     <div class="container">
         <div class="hero">
-            <img src="/static/favicon.png" alt="AiAssist Secure" style="height: 60px; object-fit: contain; margin: 0 auto 20px; display: block; filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.4)) drop-shadow(0 0 6px rgba(139, 92, 246, 0.3));">
+            <img src="/static/logo-icon-dark.png" alt="DevNetwork" style="height: 60px; object-fit: contain; margin: 0 auto 20px; display: block; filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.3));">
             <h1>Bot API Quest</h1>
             <p class="tagline">Build legendary bots. Unlock powers. Dominate the network.</p>
             <div class="stats">
@@ -6302,7 +6302,7 @@ posts.forEach(p => console.log(p.content));</code></pre>
         </div>
         
         <div class="footer">
-            <p>Built with ❤️ for the AiAssist Secure community</p>
+            <p>Built with ❤️ for the DevNetwork community</p>
             <p style="margin-top: 10px;">Questions? DM <a href="#">@geppetto</a> for help!</p>
         </div>
     </div>

@@ -110791,467 +110791,555 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       );
     };
     const renderChatPanel = (compact = false) => (
-      // Anchored to the nearest positioned ancestor (both call sites are
-      // `relative` with a definite height) so the chat column can never
-      // inherit a broken percentage chain — it always fills its tab exactly.
-      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "absolute inset-0 flex flex-col overflow-hidden", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-          "div",
-          {
-            ref: chatContainerRef,
-            onScroll: handleChatScroll,
-            className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden",
-            children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`, children: [
-              messages2.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "text-center py-12 text-muted-foreground", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-10 h-10 mx-auto mb-3 opacity-50" }),
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-sm", children: "Start a conversation with your AI assistant" }),
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-xs mt-1", children: "Ask for help with code, debugging, or building features" })
-              ] }) : messages2.map((msg) => {
-                const isUser = msg.role === "user";
-                return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                  motion.div,
-                  {
-                    initial: { opacity: 0, y: 10 },
-                    animate: { opacity: 1, y: 0 },
-                    className: "flex gap-3 w-full min-w-0 max-w-full overflow-hidden",
-                    "data-testid": `message-${msg.id}`,
-                    "data-role": msg.role,
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: `w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? "bg-indigo-600" : "bg-indigo-600/20"}`, children: isUser ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(User, { className: "w-4 h-4 text-white" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-4 h-4 text-indigo-400" }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                        "div",
-                        {
-                          className: `rounded-lg px-4 py-2 min-w-0 overflow-hidden break-words ${isUser ? "bg-indigo-600 text-white" : "bg-muted text-foreground"}`,
-                          style: { flex: "1 1 0%", maxWidth: compact ? "350px" : "500px", overflowWrap: "anywhere" },
-                          children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "text-[10px] opacity-50 mb-1", children: isUser ? "You" : "AI" }),
-                            isUser ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-sm break-words", style: { whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }, children: msg.content }) : (() => {
-                              const isStreaming = (isSendingMessage || gexRunning) && msg.id === messages2[messages2.length - 1]?.id;
-                              const parsedBlocks = parseContentForDisplay(msg.content);
-                              const streamingBlock = isStreaming ? detectStreamingBlock(msg.content) : null;
-                              const tokens = approxTokens(msg.content);
-                              return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "space-y-2 min-w-0 max-w-full overflow-hidden", children: [
-                                isStreaming && msg.content.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                                  motion.div,
-                                  {
-                                    initial: { opacity: 0 },
-                                    animate: { opacity: 1 },
-                                    className: "flex items-center gap-3 mb-2 pb-2 border-b border-white/5",
-                                    children: [
-                                      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px] text-cyan-400/70", children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Zap, { className: "w-3 h-3 text-cyan-400 animate-pulse" }),
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "font-medium", children: [
-                                          "~",
-                                          tokens,
-                                          " tokens"
-                                        ] })
-                                      ] }),
-                                      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px] text-muted-foreground", children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-3 h-3 animate-spin text-indigo-400" }),
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: msg.toolActive ? "Using tools..." : "Streaming..." })
-                                      ] }),
-                                      msg.toolActive && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px]", children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Search, { className: "w-3 h-3 text-amber-400 animate-pulse" }),
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-amber-400/80 font-medium", children: "Searching codebase" })
-                                      ] })
-                                    ]
-                                  }
-                                ),
-                                (msg.filesWritten && msg.filesWritten.length > 0 || msg.filesEdited && msg.filesEdited.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex flex-wrap gap-1 mb-2", children: [
-                                  msg.filesWritten?.map((file, i) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded border border-green-700/50 cursor-pointer hover:bg-green-900/50", onClick: () => {
-                                    loadFile(file);
-                                    if (isMobile) setMobileTab("code");
-                                  }, children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Plus, { className: "w-3 h-3" }),
-                                    file
-                                  ] }, `w-${i}`)),
-                                  msg.filesEdited?.map((file, i) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded border border-blue-700/50 cursor-pointer hover:bg-blue-900/50", onClick: () => {
-                                    loadFile(file);
-                                    if (isMobile) setMobileTab("code");
-                                  }, children: [
-                                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Pen, { className: "w-3 h-3" }),
-                                    file
-                                  ] }, `e-${i}`))
-                                ] }),
-                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "space-y-2 min-w-0 max-w-full overflow-hidden", children: [
-                                  parsedBlocks.map((block2, bi) => {
-                                    const blockKey = `${msg.id}-${bi}`;
-                                    const isDismissed = dismissedBlocks.has(blockKey);
-                                    if (block2.type === "text") {
-                                      let displayText = block2.content;
-                                      if (isStreaming) {
-                                        displayText = displayText.replace(/<<<(FILE|EDIT|CREATE)\s+[^>]*>>>[\s\S]*$/g, "").trim();
-                                        displayText = displayText.replace(/<<<(FILE|EDIT|CREATE)[^>]*$/g, "").trim();
-                                        displayText = displayText.replace(/<<<[^>]*$/g, "").trim();
-                                      }
-                                      if (!displayText) return null;
-                                      return /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "prose prose-invert prose-sm max-w-full text-sm break-words overflow-x-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words prose-p:my-1 prose-headings:my-2 prose-a:text-cyan-400 prose-code:text-cyan-300 prose-code:bg-white/10 prose-code:px-1 prose-code:rounded", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Markdown, { remarkPlugins: [remarkGfm], components: markdownComponents, children: displayText }) }, bi);
-                                    }
-                                    if (block2.type === "file") {
-                                      const isRejected = rejectedBlocks.has(blockKey);
-                                      if (isRejected) {
-                                        return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "reverted" })
-                                        ] }, bi);
-                                      }
-                                      if (isDismissed) {
-                                        return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-white/5 text-xs text-gray-500", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-500" }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "applied" })
-                                        ] }, bi);
-                                      }
-                                      const snapshotContent = block2.filename ? chatSnapshots[block2.filename] ?? gexSnapshots[block2.filename] : void 0;
-                                      const hasDiff = snapshotContent !== void 0 && snapshotContent !== block2.content;
-                                      const diffExpanded = !collapsedDiffs.has(blockKey);
-                                      return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-2 rounded-lg overflow-hidden border border-green-500/30", children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-3 py-1.5 bg-green-950/30 border-b border-green-500/20 space-y-1.5", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileCode, { className: "w-3.5 h-3.5 text-green-400 flex-shrink-0" }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-green-300 font-mono truncate", children: block2.filename }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-green-500/60 flex-shrink-0", children: "auto-written" })
-                                          ] }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-                                            hasDiff && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => toggleDiff(blockKey), className: `flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors ${diffExpanded ? "bg-yellow-500/30 text-yellow-300" : "bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25"}`, "data-testid": `button-diff-toggle-${bi}`, children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(GitBranch, { className: "w-3 h-3" }),
-                                              "Diff"
-                                            ] }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
-                                              if (block2.filename) loadFile(block2.filename);
-                                              if (isMobile) setMobileTab("code");
-                                            }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded transition-colors", "data-testid": `button-open-file-${bi}`, children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Eye, { className: "w-3 h-3" }),
-                                              "Open"
-                                            ] }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => dismissBlock(blockKey), className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded transition-colors", "data-testid": `button-dismiss-${bi}`, title: "Dismiss (keep changes)", children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
-                                              "Keep"
-                                            ] }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
-                                              if (block2.filename) rejectBlock(blockKey, block2.filename, block2.content);
-                                            }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded transition-colors", "data-testid": `button-reject-${bi}`, title: "Revert to original", children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
-                                              "Revert"
-                                            ] })
-                                          ] })
-                                        ] }),
-                                        diffExpanded && hasDiff ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-64 overflow-auto text-xs font-mono", children: computeDiff(snapshotContent || "", block2.content || "").map((dl, di) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: `px-3 py-0 leading-5 ${dl.type === "add" ? "bg-green-500/15 text-green-300" : dl.type === "del" ? "bg-red-500/15 text-red-300" : "text-gray-500"}`, children: dl.text || " " }, di)) }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-48 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: block2.language || "text", style: one_dark_default, customStyle: { margin: 0, padding: "0.75rem", fontSize: "0.75rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: block2.content }) })
-                                      ] }, bi);
-                                    }
-                                    if (block2.type === "edit" && block2.editOps) {
-                                      const isRejected = rejectedBlocks.has(blockKey);
-                                      if (isRejected) {
-                                        return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "reverted" })
-                                        ] }, bi);
-                                      }
-                                      if (isDismissed) {
-                                        return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-white/5 text-xs text-gray-500", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-500" }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "patched" })
-                                        ] }, bi);
-                                      }
-                                      return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-2 p-3 rounded-lg border bg-green-500/10 border-green-500/30", children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "mb-2 space-y-1.5", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FilePen, { className: "w-4 h-4 text-green-400 flex-shrink-0" }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-sm font-medium text-green-400 truncate", children: [
-                                              "Applied to ",
-                                              block2.filename
-                                            ] }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-xs text-gray-500 flex-shrink-0", children: [
-                                              "(",
-                                              block2.editOps.length,
-                                              " op",
-                                              block2.editOps.length > 1 ? "s" : "",
-                                              ")"
-                                            ] })
-                                          ] }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => dismissBlock(blockKey), className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded transition-colors", "data-testid": `button-dismiss-edit-${bi}`, title: "Dismiss (keep changes)", children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
-                                              "Keep All"
-                                            ] }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
-                                              if (block2.filename && block2.editOps) rejectAllEditOps(blockKey, block2.filename, block2.editOps);
-                                            }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded transition-colors", "data-testid": `button-reject-edit-${bi}`, title: "Revert all ops", children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
-                                              "Revert All"
-                                            ] })
-                                          ] })
-                                        ] }),
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "space-y-2 text-xs", children: (() => {
-                                          const opSnapshot = block2.filename ? chatSnapshots[block2.filename] ?? gexSnapshots[block2.filename] : void 0;
-                                          const snapshotLines = opSnapshot ? opSnapshot.split("\n") : [];
-                                          return block2.editOps.map((op, oi) => {
-                                            const opKey = `${blockKey}-op-${oi}`;
-                                            const opReverted = rejectedBlocks.has(opKey);
-                                            const opDiffOpen = !collapsedDiffs.has(opKey);
-                                            const action = op.action.toUpperCase();
-                                            const lr = action !== "INSERT" ? parseLineRange(op.range) : null;
-                                            const insertLine = action === "INSERT" ? parseInsertLine(op.range) : null;
-                                            const originalLines = lr ? snapshotLines.slice(lr.start - 1, lr.end) : [];
-                                            const newOpLines = op.code ? op.code.split("\n") : [];
-                                            const hasDiffData = opSnapshot !== void 0 && (action === "REPLACE" ? originalLines.length > 0 || newOpLines.length > 0 : action === "DELETE" ? originalLines.length > 0 : action === "INSERT" ? newOpLines.length > 0 : false);
-                                            return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `border rounded-lg overflow-hidden ${opReverted ? "border-red-500/30 opacity-60" : "border-white/10"}`, children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-2 py-1 bg-white/5", children: [
-                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
-                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: `px-1.5 py-0.5 rounded text-xs font-mono ${opReverted ? "bg-red-500/20 text-red-400 line-through" : action === "INSERT" ? "bg-green-500/20 text-green-400" : action === "DELETE" ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"}`, children: opReverted ? "REVERTED" : op.action }),
-                                                  op.range && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-gray-500 font-mono", children: op.range })
-                                                ] }),
-                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
-                                                  hasDiffData && !opReverted && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                                                    "button",
-                                                    {
-                                                      onClick: () => toggleDiff(opKey),
-                                                      className: `flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${opDiffOpen ? "bg-yellow-500/30 text-yellow-300" : "bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25"}`,
-                                                      "data-testid": `button-diff-op-${bi}-${oi}`,
-                                                      children: [
-                                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(GitBranch, { className: "w-2.5 h-2.5" }),
-                                                        "Diff"
-                                                      ]
-                                                    }
-                                                  ),
-                                                  !opReverted && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                                                    "button",
-                                                    {
-                                                      onClick: () => {
-                                                        if (block2.filename) revertSingleOp(opKey, block2.filename, op);
-                                                      },
-                                                      className: "flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-red-500/15 text-red-400 hover:bg-red-500/25 rounded transition-colors",
-                                                      "data-testid": `button-reject-op-${bi}-${oi}`,
-                                                      title: `Revert this ${op.action}`,
-                                                      children: [
-                                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-2.5 h-2.5" }),
-                                                        "Revert"
-                                                      ]
-                                                    }
-                                                  )
-                                                ] })
-                                              ] }),
-                                              !opReverted && opDiffOpen && hasDiffData ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "max-h-40 overflow-auto font-mono text-[11px] leading-5", children: [
-                                                action === "REPLACE" && computeDiff(originalLines.join("\n"), newOpLines.join("\n")).map((dl, di) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: `px-2 ${dl.type === "add" ? "bg-green-500/15 text-green-300" : dl.type === "del" ? "bg-red-500/15 text-red-300" : "text-gray-500"}`, children: dl.text || " " }, di)),
-                                                action === "DELETE" && originalLines.map((l2, li) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-2 bg-red-500/15 text-red-300", children: [
-                                                  "-",
-                                                  l2
-                                                ] }, `d-${li}`)),
-                                                action === "INSERT" && newOpLines.map((l2, li) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-2 bg-green-500/15 text-green-300", children: [
-                                                  "+",
-                                                  l2
-                                                ] }, `a-${li}`))
-                                              ] }) : op.code && !opReverted ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-32 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: getLanguageFromFilename(block2.filename || ""), style: one_dark_default, customStyle: { margin: 0, padding: "0.5rem", fontSize: "0.7rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: op.code }) }) : null
-                                            ] }, oi);
-                                          });
-                                        })() })
-                                      ] }, bi);
-                                    }
-                                    return null;
-                                  }),
-                                  isStreaming && streamingBlock && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                                    motion.div,
-                                    {
-                                      initial: { opacity: 0, scale: 0.95 },
-                                      animate: { opacity: 1, scale: 1 },
-                                      className: "my-2 rounded-lg overflow-hidden border border-cyan-500/30",
-                                      children: [
-                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-cyan-950/30 border-b border-cyan-500/20", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileCode, { className: "w-3.5 h-3.5 text-cyan-400" }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-cyan-300 font-mono font-medium", children: streamingBlock.filename }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-500/15 rounded text-[10px] text-cyan-400", children: [
-                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-2.5 h-2.5 animate-spin" }),
-                                              "streaming"
-                                            ] })
-                                          ] }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-white/30 font-mono", children: getLanguageFromFilename(streamingBlock.filename) })
-                                        ] }),
-                                        streamingBlock.streamingCode ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-64 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: getLanguageFromFilename(streamingBlock.filename), style: one_dark_default, customStyle: { margin: 0, padding: "0.75rem", fontSize: "0.75rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: streamingBlock.streamingCode }) }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 px-3 py-3", children: [
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-white/30", children: "Writing code..." }),
-                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-0.5", children: [
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "0ms" } }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "100ms" } }),
-                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "200ms" } })
-                                          ] })
-                                        ] })
-                                      ]
-                                    }
-                                  )
-                                ] })
-                              ] });
-                            })()
-                          ]
-                        }
-                      )
-                    ]
-                  },
-                  msg.id
-                );
-              }),
-              isSendingMessage && messages2[messages2.length - 1]?.content === "" && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                motion.div,
-                {
-                  initial: { opacity: 0, y: 10 },
-                  animate: { opacity: 1, y: 0 },
-                  className: "flex gap-3",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-4 h-4 text-indigo-400" }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "bg-muted rounded-lg px-4 py-3", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-4 h-4 text-indigo-400 animate-spin" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-sm text-muted-foreground", children: "Generating..." })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-1 mt-2", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce", style: { animationDelay: "0ms" } }),
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce", style: { animationDelay: "150ms" } }),
-                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1.5 h-1.5 bg-indigo-400/60 rounded-full animate-bounce", style: { animationDelay: "300ms" } })
-                      ] })
-                    ] })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { ref: chatEndRef })
-            ] })
-          }
-        ),
-        !shouldAutoScroll && messages2.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "absolute bottom-28 right-6 z-10", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-          Button,
-          {
-            size: "sm",
-            variant: "outline",
-            className: "rounded-full h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-lg",
-            onClick: scrollToBottom,
-            "data-testid": "button-scroll-to-bottom",
-            children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ArrowDown, { className: "w-4 h-4" })
-          }
-        ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `${compact ? "p-3" : "p-4"} flex-shrink-0 border-t border-border space-y-2`, children: [
-          chatError && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleAlert, { className: "w-3.5 h-3.5 flex-shrink-0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "flex-1 truncate", children: chatError }),
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Button, { variant: "ghost", size: "sm", className: "h-5 w-5 p-0 text-red-400", onClick: () => setChatError(null), children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(X, { className: "w-3 h-3" }) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between w-full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit ace-glow-border", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                "button",
-                {
-                  onClick: () => setEditorMode("keystone"),
-                  className: `px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${editorMode === "keystone" ? "bg-gradient-to-r from-cyan-500/15 via-violet-500/15 to-pink-500/15 shadow-sm" : "text-muted-foreground hover:text-foreground"}`,
-                  title: "Keystone Mode: Full code editor",
-                  "data-testid": "button-mode-keystone",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CodeXml, { className: "w-3 h-3 inline mr-1" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: editorMode === "keystone" ? "ace-text-shimmer" : "", children: "Keystone" })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-                "button",
-                {
-                  onClick: () => setEditorMode("focus"),
-                  className: `px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${editorMode === "focus" ? "bg-purple-500/20 text-purple-400 shadow-sm" : "text-muted-foreground hover:text-foreground"}`,
-                  title: "Focus Mode: Documentation & research only",
-                  "data-testid": "button-mode-focus",
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileText, { className: "w-3 h-3 inline mr-1" }),
-                    "Focus"
-                  ]
-                }
-              )
-            ] }),
-            editorMode === "keystone" && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
-              "button",
+      // Anchored to the nearest positioned ancestor. Every layout-critical
+      // property is set INLINE so the column fills its box even if a utility
+      // class is missing from the prebuilt stylesheet or a merge drops one:
+      // the desktop tab chain collapsed exactly this way (missing minHeight).
+      /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+        "div",
+        {
+          className: "absolute inset-0 flex flex-col overflow-hidden",
+          style: {
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            minHeight: 0,
+            height: "100%",
+            background: "linear-gradient(180deg, rgba(249,99,2,.04), transparent 140px)"
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+              "div",
               {
-                onClick: () => setReadOnlyMode(!readOnlyMode),
-                className: `flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 border ${readOnlyMode ? "bg-amber-900/40 border-amber-500/40 text-amber-300" : "bg-emerald-900/30 border-emerald-500/30 text-emerald-300"}`,
-                title: readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files",
-                "data-testid": "button-toggle-read-write",
+                className: "flex items-center justify-between border-b border-white/10",
+                style: { flexShrink: 0, padding: "5px 12px", background: "rgba(0,0,0,.35)" },
+                "data-testid": "chat-status-bar",
                 children: [
-                  readOnlyMode ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Eye, { className: "w-3.5 h-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Pencil, { className: "w-3.5 h-3.5" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: readOnlyMode ? "Read-Only" : "Read & Write" })
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono font-semibold", style: { fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }, children: "AI CONSOLE" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "rounded-full flex-shrink-0", style: { width: 6, height: 6, background: runtimeSessionId ? "#22c55e" : "#6b7280" }, title: runtimeSessionId ? "Runtime connected" : "Runtime offline" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-3 font-mono text-muted-foreground", style: { fontSize: 10, letterSpacing: "0.08em" }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { "data-testid": "status-mode", children: editorMode === "focus" ? "FOCUS" : "KEYSTONE" }),
+                    editorMode === "keystone" && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { style: { color: readOnlyMode ? "#fbbf24" : "#34d399" }, children: readOnlyMode ? "READ" : "R/W" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { "data-testid": "status-msg-count", children: [
+                      messages2.length,
+                      " MSG"
+                    ] })
+                  ] })
                 ]
               }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2 items-center text-xs", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Sparkles, { className: "w-3 h-3 text-muted-foreground" }),
-            providers.length > 1 && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Select2, { value: selectedProvider, onValueChange: setSelectedProvider, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectTrigger2, { className: `h-7 w-24 bg-muted border-border text-xs`, "data-testid": "select-provider", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectValue2, { placeholder: "Provider" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectContent2, { children: providers.map((p) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: p.id, children: p.name }, p.id)) })
-            ] }),
-            providers.length <= 1 && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-muted-foreground", children: providers[0]?.name || (detectedProvider ? detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1) : "AI") }),
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Select2, { value: selectedModel, onValueChange: setSelectedModel, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectTrigger2, { className: "flex-1 h-7 bg-muted border-border text-xs", "data-testid": "select-model", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectValue2, { placeholder: isLoadingModels ? "Loading..." : "Auto" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(SelectContent2, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: "auto", children: "Auto" }),
-                (selectedProvider ? getModelsForProvider(selectedProvider) : models).map((m) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: m.id, children: m.name }, m.id))
-              ] })
-            ] }),
-            providers.length === 0 && !isLoadingModels && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Link, { href: "/dashboard", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Button, { variant: "ghost", size: "sm", className: "h-7 text-xs text-amber-400 hover:text-amber-300", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Settings, { className: "w-3 h-3 mr-1" }),
-              "Add Key"
-            ] }) }),
+            ),
             /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-              Button,
+              "div",
               {
-                variant: "ghost",
-                size: "sm",
-                onClick: resetContext,
-                disabled: isResettingContext || messages2.length === 0,
-                className: "h-7 px-2 text-xs text-muted-foreground hover:text-foreground",
-                "data-testid": "button-reset-context",
-                title: "Refresh LLM context (keeps chat history visible)",
-                children: isResettingContext ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-3 h-3 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RefreshCw, { className: "w-3 h-3" })
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-              Textarea,
-              {
-                ref: textareaRef,
-                defaultValue: "",
-                onKeyDown: (e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !isMobile) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                },
-                placeholder: hasPendingReview ? "Review pending changes first..." : editorMode === "focus" ? "Ask about docs, specs, architecture..." : readOnlyMode ? "Ask about code, architecture, how to run..." : "Ask the AI for help...",
-                className: `resize-none bg-muted border-border text-foreground min-h-[40px] max-h-24 text-sm ${hasPendingReview ? "opacity-50" : ""}`,
-                rows: 1,
-                disabled: hasPendingReview,
-                "data-testid": "input-chat-message"
+                ref: chatContainerRef,
+                onScroll: handleChatScroll,
+                className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden",
+                style: { flex: "1 1 0%", minHeight: 0, overflowY: "auto", overflowX: "hidden" },
+                children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `${compact ? "space-y-3 p-3" : "space-y-4 p-4"} min-w-0 max-w-full overflow-hidden`, children: [
+                  messages2.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "py-10 px-4", "data-testid": "chat-empty-state", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "max-w-sm mx-auto border border-white/10 rounded-sm overflow-hidden", style: { background: "rgba(0,0,0,.3)" }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 px-3 py-2 border-b border-white/10", style: { background: "rgba(249,99,2,.08)" }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-3.5 h-3.5", style: { color: "#ff8c1a" } }),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono font-semibold", style: { fontSize: 10, color: "#ff8c1a", letterSpacing: "0.14em" }, children: "AIOS // AI CONSOLE" })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "p-3", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "font-mono text-xs text-muted-foreground", children: "Reads your files. Writes code. Applies edits in place." }),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "font-mono text-muted-foreground mt-1", style: { fontSize: 10, opacity: 0.6, letterSpacing: "0.08em" }, children: "SELECT A COMMAND OR TYPE BELOW" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "mt-3 space-y-1", children: [
+                        { k: "F1", label: "EXPLAIN THIS CODEBASE", fill: "Explain this codebase" },
+                        { k: "F2", label: "FIX A BUG", fill: "Fix a bug: " },
+                        { k: "F3", label: "BUILD A FEATURE", fill: "Build a feature: " }
+                      ].map((c2) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                        "button",
+                        {
+                          onClick: () => {
+                            if (textareaRef.current) {
+                              textareaRef.current.value = c2.fill;
+                              textareaRef.current.focus();
+                            }
+                          },
+                          className: "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-sm border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-left",
+                          style: { borderLeft: "2px solid #f96302" },
+                          "data-testid": `key-${c2.k.toLowerCase()}`,
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono font-bold flex-shrink-0", style: { fontSize: 10, color: "#ff8c1a" }, children: c2.k }),
+                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono text-foreground", style: { fontSize: 11, letterSpacing: "0.06em" }, children: c2.label })
+                          ]
+                        },
+                        c2.k
+                      )) })
+                    ] })
+                  ] }) }) : messages2.map((msg) => {
+                    const isUser = msg.role === "user";
+                    return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                      motion.div,
+                      {
+                        initial: { opacity: 0, y: 10 },
+                        animate: { opacity: 1, y: 0 },
+                        className: "flex gap-3 w-full min-w-0 max-w-full overflow-hidden",
+                        "data-testid": `message-${msg.id}`,
+                        "data-role": msg.role,
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                            "div",
+                            {
+                              className: "w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0",
+                              style: isUser ? { background: "#f96302" } : { background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" },
+                              children: isUser ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(User, { className: "w-3.5 h-3.5 text-white" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-3.5 h-3.5", style: { color: "#ff8c1a" } })
+                            }
+                          ),
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                            "div",
+                            {
+                              className: "rounded-sm px-3 py-2 min-w-0 overflow-hidden break-words text-foreground",
+                              style: {
+                                flex: "1 1 0%",
+                                maxWidth: compact ? "350px" : "500px",
+                                overflowWrap: "anywhere",
+                                background: isUser ? "rgba(249,99,2,.08)" : "rgba(255,255,255,.03)",
+                                border: "1px solid rgba(255,255,255,.06)",
+                                borderLeft: isUser ? "2px solid #f96302" : "2px solid rgba(255,140,26,.4)"
+                              },
+                              children: [
+                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "font-mono mb-1", style: { fontSize: 9, letterSpacing: "0.16em", color: isUser ? "#ff8c1a" : "rgba(255,255,255,.4)" }, children: isUser ? "USR" : "AIOS" }),
+                                isUser ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { className: "text-sm break-words", style: { whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere" }, children: msg.content }) : (() => {
+                                  const isStreaming = (isSendingMessage || gexRunning) && msg.id === messages2[messages2.length - 1]?.id;
+                                  const parsedBlocks = parseContentForDisplay(msg.content);
+                                  const streamingBlock = isStreaming ? detectStreamingBlock(msg.content) : null;
+                                  const tokens = approxTokens(msg.content);
+                                  return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "space-y-2 min-w-0 max-w-full overflow-hidden", children: [
+                                    isStreaming && msg.content.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                                      motion.div,
+                                      {
+                                        initial: { opacity: 0 },
+                                        animate: { opacity: 1 },
+                                        className: "flex items-center gap-3 mb-2 pb-2 border-b border-white/5",
+                                        children: [
+                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px] text-cyan-400/70", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Zap, { className: "w-3 h-3 text-cyan-400 animate-pulse" }),
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "font-medium", children: [
+                                              "~",
+                                              tokens,
+                                              " tokens"
+                                            ] })
+                                          ] }),
+                                          /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px] text-muted-foreground", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-3 h-3 animate-spin text-indigo-400" }),
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: msg.toolActive ? "Using tools..." : "Streaming..." })
+                                          ] }),
+                                          msg.toolActive && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1.5 text-[10px]", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Search, { className: "w-3 h-3 text-amber-400 animate-pulse" }),
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-amber-400/80 font-medium", children: "Searching codebase" })
+                                          ] })
+                                        ]
+                                      }
+                                    ),
+                                    (msg.filesWritten && msg.filesWritten.length > 0 || msg.filesEdited && msg.filesEdited.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex flex-wrap gap-1 mb-2", children: [
+                                      msg.filesWritten?.map((file, i) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded border border-green-700/50 cursor-pointer hover:bg-green-900/50", onClick: () => {
+                                        loadFile(file);
+                                        if (isMobile) setMobileTab("code");
+                                      }, children: [
+                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Plus, { className: "w-3 h-3" }),
+                                        file
+                                      ] }, `w-${i}`)),
+                                      msg.filesEdited?.map((file, i) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded border border-blue-700/50 cursor-pointer hover:bg-blue-900/50", onClick: () => {
+                                        loadFile(file);
+                                        if (isMobile) setMobileTab("code");
+                                      }, children: [
+                                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Pen, { className: "w-3 h-3" }),
+                                        file
+                                      ] }, `e-${i}`))
+                                    ] }),
+                                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "space-y-2 min-w-0 max-w-full overflow-hidden", children: [
+                                      parsedBlocks.map((block2, bi) => {
+                                        const blockKey = `${msg.id}-${bi}`;
+                                        const isDismissed = dismissedBlocks.has(blockKey);
+                                        if (block2.type === "text") {
+                                          let displayText = block2.content;
+                                          if (isStreaming) {
+                                            displayText = displayText.replace(/<<<(FILE|EDIT|CREATE)\s+[^>]*>>>[\s\S]*$/g, "").trim();
+                                            displayText = displayText.replace(/<<<(FILE|EDIT|CREATE)[^>]*$/g, "").trim();
+                                            displayText = displayText.replace(/<<<[^>]*$/g, "").trim();
+                                          }
+                                          if (!displayText) return null;
+                                          return /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "prose prose-invert prose-sm max-w-full text-sm break-words overflow-x-hidden [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all [&_p]:break-words prose-p:my-1 prose-headings:my-2 prose-a:text-cyan-400 prose-code:text-cyan-300 prose-code:bg-white/10 prose-code:px-1 prose-code:rounded", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Markdown, { remarkPlugins: [remarkGfm], components: markdownComponents, children: displayText }) }, bi);
+                                        }
+                                        if (block2.type === "file") {
+                                          const isRejected = rejectedBlocks.has(blockKey);
+                                          if (isRejected) {
+                                            return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "reverted" })
+                                            ] }, bi);
+                                          }
+                                          if (isDismissed) {
+                                            return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-white/5 text-xs text-gray-500", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-500" }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "applied" })
+                                            ] }, bi);
+                                          }
+                                          const snapshotContent = block2.filename ? chatSnapshots[block2.filename] ?? gexSnapshots[block2.filename] : void 0;
+                                          const hasDiff = snapshotContent !== void 0 && snapshotContent !== block2.content;
+                                          const diffExpanded = !collapsedDiffs.has(blockKey);
+                                          return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-2 rounded-lg overflow-hidden border border-green-500/30", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-3 py-1.5 bg-green-950/30 border-b border-green-500/20 space-y-1.5", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileCode, { className: "w-3.5 h-3.5 text-green-400 flex-shrink-0" }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-green-300 font-mono truncate", children: block2.filename }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-green-500/60 flex-shrink-0", children: "auto-written" })
+                                              ] }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+                                                hasDiff && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => toggleDiff(blockKey), className: `flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors ${diffExpanded ? "bg-yellow-500/30 text-yellow-300" : "bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25"}`, "data-testid": `button-diff-toggle-${bi}`, children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(GitBranch, { className: "w-3 h-3" }),
+                                                  "Diff"
+                                                ] }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
+                                                  if (block2.filename) loadFile(block2.filename);
+                                                  if (isMobile) setMobileTab("code");
+                                                }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded transition-colors", "data-testid": `button-open-file-${bi}`, children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Eye, { className: "w-3 h-3" }),
+                                                  "Open"
+                                                ] }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => dismissBlock(blockKey), className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded transition-colors", "data-testid": `button-dismiss-${bi}`, title: "Dismiss (keep changes)", children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
+                                                  "Keep"
+                                                ] }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
+                                                  if (block2.filename) rejectBlock(blockKey, block2.filename, block2.content);
+                                                }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded transition-colors", "data-testid": `button-reject-${bi}`, title: "Revert to original", children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
+                                                  "Revert"
+                                                ] })
+                                              ] })
+                                            ] }),
+                                            diffExpanded && hasDiff ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-64 overflow-auto text-xs font-mono", children: computeDiff(snapshotContent || "", block2.content || "").map((dl, di) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: `px-3 py-0 leading-5 ${dl.type === "add" ? "bg-green-500/15 text-green-300" : dl.type === "del" ? "bg-red-500/15 text-red-300" : "text-gray-500"}`, children: dl.text || " " }, di)) }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-48 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: block2.language || "text", style: one_dark_default, customStyle: { margin: 0, padding: "0.75rem", fontSize: "0.75rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: block2.content }) })
+                                          ] }, bi);
+                                        }
+                                        if (block2.type === "edit" && block2.editOps) {
+                                          const isRejected = rejectedBlocks.has(blockKey);
+                                          if (isRejected) {
+                                            return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "reverted" })
+                                            ] }, bi);
+                                          }
+                                          if (isDismissed) {
+                                            return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-1 flex items-center gap-2 px-3 py-1 rounded bg-white/5 text-xs text-gray-500", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3 text-green-500" }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono", children: block2.filename }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: "patched" })
+                                            ] }, bi);
+                                          }
+                                          return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "my-2 p-3 rounded-lg border bg-green-500/10 border-green-500/30", children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "mb-2 space-y-1.5", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 min-w-0", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FilePen, { className: "w-4 h-4 text-green-400 flex-shrink-0" }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-sm font-medium text-green-400 truncate", children: [
+                                                  "Applied to ",
+                                                  block2.filename
+                                                ] }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "text-xs text-gray-500 flex-shrink-0", children: [
+                                                  "(",
+                                                  block2.editOps.length,
+                                                  " op",
+                                                  block2.editOps.length > 1 ? "s" : "",
+                                                  ")"
+                                                ] })
+                                              ] }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1 flex-wrap", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => dismissBlock(blockKey), className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-green-500/20 text-green-400 hover:bg-green-500/30 rounded transition-colors", "data-testid": `button-dismiss-edit-${bi}`, title: "Dismiss (keep changes)", children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleCheck, { className: "w-3 h-3" }),
+                                                  "Keep All"
+                                                ] }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("button", { onClick: () => {
+                                                  if (block2.filename && block2.editOps) rejectAllEditOps(blockKey, block2.filename, block2.editOps);
+                                                }, className: "flex items-center gap-1 px-2 py-0.5 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded transition-colors", "data-testid": `button-reject-edit-${bi}`, title: "Revert all ops", children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-3 h-3" }),
+                                                  "Revert All"
+                                                ] })
+                                              ] })
+                                            ] }),
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "space-y-2 text-xs", children: (() => {
+                                              const opSnapshot = block2.filename ? chatSnapshots[block2.filename] ?? gexSnapshots[block2.filename] : void 0;
+                                              const snapshotLines = opSnapshot ? opSnapshot.split("\n") : [];
+                                              return block2.editOps.map((op, oi) => {
+                                                const opKey = `${blockKey}-op-${oi}`;
+                                                const opReverted = rejectedBlocks.has(opKey);
+                                                const opDiffOpen = !collapsedDiffs.has(opKey);
+                                                const action = op.action.toUpperCase();
+                                                const lr = action !== "INSERT" ? parseLineRange(op.range) : null;
+                                                const insertLine = action === "INSERT" ? parseInsertLine(op.range) : null;
+                                                const originalLines = lr ? snapshotLines.slice(lr.start - 1, lr.end) : [];
+                                                const newOpLines = op.code ? op.code.split("\n") : [];
+                                                const hasDiffData = opSnapshot !== void 0 && (action === "REPLACE" ? originalLines.length > 0 || newOpLines.length > 0 : action === "DELETE" ? originalLines.length > 0 : action === "INSERT" ? newOpLines.length > 0 : false);
+                                                return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `border rounded-lg overflow-hidden ${opReverted ? "border-red-500/30 opacity-60" : "border-white/10"}`, children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-2 py-1 bg-white/5", children: [
+                                                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
+                                                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: `px-1.5 py-0.5 rounded text-xs font-mono ${opReverted ? "bg-red-500/20 text-red-400 line-through" : action === "INSERT" ? "bg-green-500/20 text-green-400" : action === "DELETE" ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"}`, children: opReverted ? "REVERTED" : op.action }),
+                                                      op.range && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-gray-500 font-mono", children: op.range })
+                                                    ] }),
+                                                    /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-1", children: [
+                                                      hasDiffData && !opReverted && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                                                        "button",
+                                                        {
+                                                          onClick: () => toggleDiff(opKey),
+                                                          className: `flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${opDiffOpen ? "bg-yellow-500/30 text-yellow-300" : "bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25"}`,
+                                                          "data-testid": `button-diff-op-${bi}-${oi}`,
+                                                          children: [
+                                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(GitBranch, { className: "w-2.5 h-2.5" }),
+                                                            "Diff"
+                                                          ]
+                                                        }
+                                                      ),
+                                                      !opReverted && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                                                        "button",
+                                                        {
+                                                          onClick: () => {
+                                                            if (block2.filename) revertSingleOp(opKey, block2.filename, op);
+                                                          },
+                                                          className: "flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-red-500/15 text-red-400 hover:bg-red-500/25 rounded transition-colors",
+                                                          "data-testid": `button-reject-op-${bi}-${oi}`,
+                                                          title: `Revert this ${op.action}`,
+                                                          children: [
+                                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RotateCcw, { className: "w-2.5 h-2.5" }),
+                                                            "Revert"
+                                                          ]
+                                                        }
+                                                      )
+                                                    ] })
+                                                  ] }),
+                                                  !opReverted && opDiffOpen && hasDiffData ? /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "max-h-40 overflow-auto font-mono text-[11px] leading-5", children: [
+                                                    action === "REPLACE" && computeDiff(originalLines.join("\n"), newOpLines.join("\n")).map((dl, di) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: `px-2 ${dl.type === "add" ? "bg-green-500/15 text-green-300" : dl.type === "del" ? "bg-red-500/15 text-red-300" : "text-gray-500"}`, children: dl.text || " " }, di)),
+                                                    action === "DELETE" && originalLines.map((l2, li) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-2 bg-red-500/15 text-red-300", children: [
+                                                      "-",
+                                                      l2
+                                                    ] }, `d-${li}`)),
+                                                    action === "INSERT" && newOpLines.map((l2, li) => /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "px-2 bg-green-500/15 text-green-300", children: [
+                                                      "+",
+                                                      l2
+                                                    ] }, `a-${li}`))
+                                                  ] }) : op.code && !opReverted ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-32 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: getLanguageFromFilename(block2.filename || ""), style: one_dark_default, customStyle: { margin: 0, padding: "0.5rem", fontSize: "0.7rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: op.code }) }) : null
+                                                ] }, oi);
+                                              });
+                                            })() })
+                                          ] }, bi);
+                                        }
+                                        return null;
+                                      }),
+                                      isStreaming && streamingBlock && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                                        motion.div,
+                                        {
+                                          initial: { opacity: 0, scale: 0.95 },
+                                          animate: { opacity: 1, scale: 1 },
+                                          className: "my-2 rounded-lg overflow-hidden border border-cyan-500/30",
+                                          children: [
+                                            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between px-3 py-1.5 bg-cyan-950/30 border-b border-cyan-500/20", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileCode, { className: "w-3.5 h-3.5 text-cyan-400" }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-cyan-300 font-mono font-medium", children: streamingBlock.filename }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("span", { className: "inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-500/15 rounded text-[10px] text-cyan-400", children: [
+                                                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-2.5 h-2.5 animate-spin" }),
+                                                  "streaming"
+                                                ] })
+                                              ] }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-white/30 font-mono", children: getLanguageFromFilename(streamingBlock.filename) })
+                                            ] }),
+                                            streamingBlock.streamingCode ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "max-h-64 overflow-auto", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(prism_default2, { language: getLanguageFromFilename(streamingBlock.filename), style: one_dark_default, customStyle: { margin: 0, padding: "0.75rem", fontSize: "0.75rem", background: "rgba(0,0,0,0.3)", borderRadius: 0 }, wrapLongLines: true, children: streamingBlock.streamingCode }) }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 px-3 py-3", children: [
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-[10px] text-white/30", children: "Writing code..." }),
+                                              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-0.5", children: [
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "0ms" } }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "100ms" } }),
+                                                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "w-1 h-1 bg-cyan-400/50 rounded-full animate-bounce", style: { animationDelay: "200ms" } })
+                                              ] })
+                                            ] })
+                                          ]
+                                        }
+                                      )
+                                    ] })
+                                  ] });
+                                })()
+                              ]
+                            }
+                          )
+                        ]
+                      },
+                      msg.id
+                    );
+                  }),
+                  isSendingMessage && messages2[messages2.length - 1]?.content === "" && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                    motion.div,
+                    {
+                      initial: { opacity: 0, y: 10 },
+                      animate: { opacity: 1, y: 0 },
+                      className: "flex gap-3",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0", style: { background: "rgba(249,99,2,.1)", border: "1px solid rgba(249,99,2,.35)" }, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Bot, { className: "w-3.5 h-3.5", style: { color: "#ff8c1a" } }) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "rounded-sm px-3 py-2", style: { background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderLeft: "2px solid #f96302" }, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-3.5 h-3.5 animate-spin", style: { color: "#ff8c1a" } }),
+                          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "font-mono text-xs text-muted-foreground", style: { letterSpacing: "0.1em" }, children: "PROCESSING\u2026" })
+                        ] }) })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { ref: chatEndRef })
+                ] })
               }
             ),
-            isSendingMessage ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+            !shouldAutoScroll && messages2.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "absolute bottom-28 right-6 z-10", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
               Button,
               {
-                onClick: stopStream,
-                className: "bg-red-600 hover:bg-red-700 h-auto px-3",
-                title: "Stop generating",
-                "data-testid": "button-stop-stream",
-                children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Square, { className: "w-4 h-4" })
+                size: "sm",
+                variant: "outline",
+                className: "rounded-sm h-7 w-7 p-0 shadow-lg",
+                style: { background: "rgba(0,0,0,.7)", border: "1px solid rgba(249,99,2,.5)", color: "#ff8c1a" },
+                onClick: scrollToBottom,
+                "data-testid": "button-scroll-to-bottom",
+                children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ArrowDown, { className: "w-4 h-4" })
               }
-            ) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
-              Button,
-              {
-                onClick: sendMessage,
-                disabled: hasPendingReview,
-                className: "bg-indigo-600 hover:bg-indigo-700 h-auto px-3",
-                title: hasPendingReview ? "Review pending changes before sending" : void 0,
-                "data-testid": "button-send-message",
-                children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Send, { className: "w-4 h-4" })
-              }
-            )
-          ] })
-        ] })
-      ] })
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: `${compact ? "p-2.5" : "p-3"} border-t border-white/10 space-y-2`, style: { flexShrink: 0, background: "rgba(0,0,0,.35)" }, children: [
+              chatError && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center gap-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-400 text-xs", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CircleAlert, { className: "w-3.5 h-3.5 flex-shrink-0" }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "flex-1 truncate", children: chatError }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Button, { variant: "ghost", size: "sm", className: "h-5 w-5 p-0 text-red-400", onClick: () => setChatError(null), children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(X, { className: "w-3 h-3" }) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center justify-between w-full", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex items-center w-fit rounded-sm border border-white/10 overflow-hidden", style: { background: "rgba(0,0,0,.4)" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                    "button",
+                    {
+                      onClick: () => setEditorMode("keystone"),
+                      className: `px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${editorMode === "keystone" ? "" : "text-muted-foreground hover:text-foreground"}`,
+                      style: { fontSize: 10, letterSpacing: "0.1em", ...editorMode === "keystone" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {} },
+                      title: "Keystone Mode: Full code editor",
+                      "data-testid": "button-mode-keystone",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(CodeXml, { className: "w-3 h-3 inline mr-1" }),
+                        "KEYSTONE"
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                    "button",
+                    {
+                      onClick: () => setEditorMode("focus"),
+                      className: `px-2.5 py-1 font-mono font-semibold transition-all duration-200 ${editorMode === "focus" ? "" : "text-muted-foreground hover:text-foreground"}`,
+                      style: { fontSize: 10, letterSpacing: "0.1em", ...editorMode === "focus" ? { background: "rgba(249,99,2,.15)", color: "#ff8c1a", boxShadow: "inset 0 -2px 0 #f96302" } : {} },
+                      title: "Focus Mode: Documentation & research only",
+                      "data-testid": "button-mode-focus",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(FileText, { className: "w-3 h-3 inline mr-1" }),
+                        "FOCUS"
+                      ]
+                    }
+                  )
+                ] }),
+                editorMode === "keystone" && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(
+                  "button",
+                  {
+                    onClick: () => setReadOnlyMode(!readOnlyMode),
+                    className: "flex items-center gap-1.5 px-2.5 py-1 font-mono font-semibold rounded-sm transition-all duration-200 border",
+                    style: {
+                      fontSize: 10,
+                      letterSpacing: "0.1em",
+                      ...readOnlyMode ? { background: "rgba(251,191,36,.08)", borderColor: "rgba(251,191,36,.4)", color: "#fbbf24" } : { background: "rgba(52,211,153,.08)", borderColor: "rgba(52,211,153,.35)", color: "#34d399" }
+                    },
+                    title: readOnlyMode ? "Read-Only: AI explains code without making changes" : "Read & Write: AI can create and edit files",
+                    "data-testid": "button-toggle-read-write",
+                    children: [
+                      readOnlyMode ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Eye, { className: "w-3.5 h-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Pencil, { className: "w-3.5 h-3.5" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { children: readOnlyMode ? "READ-ONLY" : "READ & WRITE" })
+                    ]
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2 items-center text-xs", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Sparkles, { className: "w-3 h-3", style: { color: "#ff8c1a" } }),
+                providers.length > 1 && /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Select2, { value: selectedProvider, onValueChange: setSelectedProvider, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectTrigger2, { className: `h-7 w-24 bg-muted border-border text-xs`, "data-testid": "select-provider", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectValue2, { placeholder: "Provider" }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectContent2, { children: providers.map((p) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: p.id, children: p.name }, p.id)) })
+                ] }),
+                providers.length <= 1 && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("span", { className: "text-xs text-muted-foreground", children: providers[0]?.name || (detectedProvider ? detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1) : "AI") }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Select2, { value: selectedModel, onValueChange: setSelectedModel, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectTrigger2, { className: "flex-1 h-7 bg-muted border-border text-xs", "data-testid": "select-model", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectValue2, { placeholder: isLoadingModels ? "Loading..." : "Auto" }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(SelectContent2, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: "auto", children: "Auto" }),
+                    (selectedProvider ? getModelsForProvider(selectedProvider) : models).map((m) => /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(SelectItem2, { value: m.id, children: m.name }, m.id))
+                  ] })
+                ] }),
+                providers.length === 0 && !isLoadingModels && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Link, { href: "/dashboard", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Button, { variant: "ghost", size: "sm", className: "h-7 text-xs text-amber-400 hover:text-amber-300", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Settings, { className: "w-3 h-3 mr-1" }),
+                  "Add Key"
+                ] }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                  Button,
+                  {
+                    variant: "ghost",
+                    size: "sm",
+                    onClick: resetContext,
+                    disabled: isResettingContext || messages2.length === 0,
+                    className: "h-7 px-2 text-xs text-muted-foreground hover:text-foreground",
+                    "data-testid": "button-reset-context",
+                    title: "Refresh LLM context (keeps chat history visible)",
+                    children: isResettingContext ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(LoaderCircle, { className: "w-3 h-3 animate-spin" }) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(RefreshCw, { className: "w-3 h-3" })
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "flex gap-2", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                  Textarea,
+                  {
+                    ref: textareaRef,
+                    defaultValue: "",
+                    onKeyDown: (e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !isMobile) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    },
+                    placeholder: hasPendingReview ? "> review pending changes first" : editorMode === "focus" ? "> ask about docs, specs, architecture" : readOnlyMode ? "> ask about code, architecture, how to run" : "> ask, build, fix\u2026",
+                    className: `resize-none font-mono text-foreground min-h-[40px] max-h-24 text-sm rounded-sm ${hasPendingReview ? "opacity-50" : ""}`,
+                    style: { background: "rgba(0,0,0,.4)", borderColor: "rgba(255,255,255,.12)" },
+                    rows: 1,
+                    disabled: hasPendingReview,
+                    "data-testid": "input-chat-message"
+                  }
+                ),
+                isSendingMessage ? /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                  Button,
+                  {
+                    onClick: stopStream,
+                    className: "bg-red-600 hover:bg-red-700 h-auto px-3 rounded-sm",
+                    title: "Stop generating",
+                    "data-testid": "button-stop-stream",
+                    children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Square, { className: "w-4 h-4" })
+                  }
+                ) : /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(
+                  Button,
+                  {
+                    onClick: sendMessage,
+                    disabled: hasPendingReview,
+                    className: "h-auto px-3 rounded-sm text-white",
+                    style: { background: hasPendingReview ? "rgba(249,99,2,.4)" : "#f96302" },
+                    title: hasPendingReview ? "Review pending changes before sending" : void 0,
+                    "data-testid": "button-send-message",
+                    children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(Send, { className: "w-4 h-4" })
+                  }
+                )
+              ] })
+            ] })
+          ]
+        }
+      )
     );
     if (isMobile) {
       return /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)("div", { className: "bg-background flex flex-col h-full min-h-0", children: [
@@ -111877,7 +111965,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("p", { children: "Select a file to edit" })
         ] }) }) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizableHandle, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 35, minSize: 25, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "h-full min-h-0 flex flex-col bg-background/50 min-w-0", children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Tabs2, { value: activeTab, onValueChange: setActiveTab, className: "flex flex-col h-full min-h-0", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(ResizablePanel, { defaultSize: 35, minSize: 25, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsx)("div", { className: "h-full min-h-0 flex flex-col bg-background/50 min-w-0", style: { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }, children: /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(Tabs2, { value: activeTab, onValueChange: setActiveTab, className: "flex flex-col h-full min-h-0", style: { height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(TabsList2, { className: "border-b border-border rounded-none bg-transparent h-auto p-0 flex-shrink-0 flex flex-wrap", children: [
             /* @__PURE__ */ (0, import_jsx_runtime81.jsxs)(TabsTrigger2, { value: "chat", className: "rounded-none border-b-2 border-transparent data-[state=active]:border-cyan-500 data-[state=active]:bg-transparent px-2.5 py-1.5 text-xs", "data-testid": "tab-chat", children: [
               /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(MessageSquare, { className: "w-3.5 h-3.5 mr-1" }),
@@ -111905,7 +111993,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
               "Settings"
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "chat", className: "flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative", children: renderChatPanel() }),
+          /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "chat", className: "flex-1 min-h-0 flex flex-col m-0 overflow-hidden relative", style: { flex: "1 1 0%", minHeight: 0, position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", margin: 0 }, children: renderChatPanel() }),
           isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "terminal", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderTerminalTab() }),
           isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "deploy", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderDeployTab() }),
           isEnterprise && /* @__PURE__ */ (0, import_jsx_runtime81.jsx)(TabsContent2, { value: "ledger", className: "flex-1 flex flex-col m-0 overflow-hidden", children: renderLedgerTab() }),
@@ -118814,7 +118902,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         " ping",
         b.unreadPings === 1 ? "" : "s"
       ] }),
-      " waiting here on AiAssist Secure"
+      " waiting here on DevNet"
     ] }, "p"));
     if (b.tokensUsed !== null) bits.push(/* @__PURE__ */ (0, import_jsx_runtime94.jsxs)(import_react79.default.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime94.jsx)(Chip, { color: "violet", children: b.usagePct !== null ? `${b.usagePct.toFixed(0)}% of tokens` : `${(b.tokensUsed / 1e3).toFixed(1)}k tokens` }),
@@ -118838,7 +118926,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       lines,
       /* @__PURE__ */ (0, import_jsx_runtime94.jsxs)("p", { className: "flex items-center gap-1.5 pt-0.5 text-[10.5px] text-zinc-600", children: [
         /* @__PURE__ */ (0, import_jsx_runtime94.jsx)("span", { className: "inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400/80" }),
-        "The Briefing \xB7 composed live from v1 production + AiAssist Secure \xB7 refreshes every 30s"
+        "The Briefing \xB7 composed live from v1 production + DevNet \xB7 refreshes every 30s"
       ] })
     ] });
   }
@@ -119354,16 +119442,12 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     showLogin2FA(hash) {
       this.container.innerHTML = `
       <div class="max-w-md mx-auto px-3 sm:px-4 py-6 sm:py-12" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-        <div class="card slide-up holo-outline">
+        <div class="card slide-up">
           <div class="text-center mb-4 sm:mb-6">
-            <img src="/static/favicon.png" alt="AiAssist Secure" style="height:48px;object-fit:contain;margin:0 auto 10px;display:block;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
-            <div class="mb-1" style="letter-spacing:-0.02em;">
-              <span class="text-xl sm:text-2xl font-bold text-white">Ai</span><span class="text-xl sm:text-2xl ace-text-shimmer-load" style="font-weight:300;">Assist</span>
-            </div>
-            <div class="flex items-center justify-center gap-2 mb-3">
-              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
-              <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
-              <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
+            <div class="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 mb-3 shadow-lg shadow-emerald-500/25">
+              <svg class="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
             </div>
             <h2 class="text-xl sm:text-2xl font-bold gradient-text">Welcome Back</h2>
             <p class="text-zinc-400 mt-1 text-sm">Enter your 2FA code to continue</p>
@@ -119480,20 +119564,13 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         <div class="absolute inset-0 bg-zinc-950/80" style="z-index:1;"></div>
 
         <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
-          <div class="slide-up relative overflow-hidden backdrop-blur-md rounded-xl p-5 sm:p-7 holo-outline">
+          <div class="slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/70 border border-zinc-700/50 rounded-xl p-5 sm:p-7">
             <div class="text-center mb-5">
               <div class="relative inline-flex items-center justify-center mb-3">
-                <div class="absolute bg-cyan-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
-                <img src="/static/favicon.png" alt="AiAssist Secure" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-25 animate-pulse" style="width:72px;height:72px;"></div>
+                <img src="/static/logo-icon-dark.png" alt="AiAS" class="relative" style="height:56px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(16,185,129,0.35));">
               </div>
-              <h1 class="text-2xl sm:text-3xl mb-1" style="letter-spacing:-0.02em;">
-                <span class="font-bold text-white">Ai</span><span class="ace-text-shimmer-load" style="font-weight:300;">Assist</span>
-              </h1>
-              <div class="flex items-center justify-center gap-2 mb-2">
-                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
-                <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
-                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
-              </div>
+              <h1 class="text-2xl sm:text-3xl font-bold mb-1"><span class="gradient-text glow-text">AiAS</span></h1>
               <p class="text-zinc-400 text-sm">Your team \u2014 human and AI \u2014 in one space.</p>
             </div>
 
@@ -119645,20 +119722,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         <canvas id="wizard-glitter-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;"></canvas>
         
         <div class="max-w-md w-full relative py-4 sm:py-6" style="z-index:3;">
-          <div class="text-center slide-up relative overflow-hidden backdrop-blur-md rounded-xl p-4 sm:p-6 holo-outline">
+          <div class="text-center slide-up relative overflow-hidden backdrop-blur-md bg-zinc-900/60 border border-zinc-700/50 rounded-xl p-4 sm:p-6">
             <div class="mb-4 sm:mb-5">
               <div class="relative inline-flex items-center justify-center mb-3">
-                <div class="absolute bg-cyan-500 rounded-2xl blur-xl opacity-30 animate-pulse" style="width:80px;height:80px;"></div>
-                <img src="/static/favicon.png" alt="AiAssist Secure" class="relative animate-float" style="height:64px;object-fit:contain;filter:drop-shadow(0 0 16px rgba(6,182,212,0.5)) drop-shadow(0 0 6px rgba(139,92,246,0.3));">
+                <div class="absolute bg-emerald-500 rounded-2xl blur-xl opacity-30 animate-pulse" style="width:80px;height:80px;"></div>
+                <img src="/static/logo-icon-dark.png" alt="DevNetwork" class="relative animate-float" style="height:64px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(16,185,129,0.4));">
               </div>
-              <h1 class="text-2xl sm:text-3xl mb-1" style="letter-spacing:-0.02em;">
-                <span class="font-bold text-white">Ai</span><span class="ace-text-shimmer-load" style="font-weight:300;">Assist</span>
+              <h1 class="text-2xl sm:text-3xl font-bold mb-1">
+                <span class="gradient-text glow-text">DevNetwork</span>
               </h1>
-              <div class="flex items-center justify-center gap-2 mb-2">
-                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(6,182,212,0.4),transparent);"></span>
-                <span class="ace-text-shimmer-load text-[10px] font-semibold uppercase" style="letter-spacing:0.35em;">Secure</span>
-                <span style="height:1px;width:40px;background:linear-gradient(90deg,transparent,rgba(139,92,246,0.4),transparent);"></span>
-              </div>
               <p class="text-zinc-300 text-sm sm:text-base">Where builders connect. No paywalls. No gatekeeping.</p>
             </div>
 
@@ -120200,7 +120272,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             <div><label class="block text-sm font-medium text-warm-gray-700 mb-1">Email Address <span class="text-zinc-500">(optional)</span></label><input type="email" name="email" class="input" placeholder="your@email.com" /></div>
             <div><label class="block text-sm font-medium text-warm-gray-700 mb-1">LinkedIn or Portfolio <span class="text-emerald-400">*</span></label><input type="url" name="portfolio" class="input" placeholder="https://linkedin.com/in/you or https://yoursite.com" required /><p class="text-xs text-zinc-500 mt-1">Must start with https://</p></div>
             <button type="submit" class="btn btn-primary w-full py-2.5 sm:py-3 text-base sm:text-lg">
-              Join AiAssist Secure
+              Join DevNetwork
             </button>
           </form>
         </div>
@@ -120282,7 +120354,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       }
     }
     show2FASetup(user, hash, totpSecret) {
-      const otpauthUrl = `otpauth://totp/${encodeURIComponent("AiAssist Secure")}:${encodeURIComponent(user.displayName)}?secret=${totpSecret}&issuer=${encodeURIComponent("AiAssist Secure")}`;
+      const otpauthUrl = `otpauth://totp/DevNetwork:${encodeURIComponent(user.displayName)}?secret=${totpSecret}&issuer=DevNetwork`;
       this.container.innerHTML = `
       <div class="max-w-lg mx-auto px-3 sm:px-4 py-3 sm:py-6" style="height:100dvh;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
         <div class="card slide-up">
@@ -120360,7 +120432,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
                   </svg>
                 </button>
               </div>
-              <p class="text-[10px] sm:text-xs text-zinc-500 mt-1">Account: AiAssist Secure (${user.displayName})</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 mt-1">Account: DevNetwork (${user.displayName})</p>
             </div>
             
             <div class="bg-zinc-800/50 rounded-xl p-3 sm:p-4 border border-zinc-700/50">
@@ -120478,7 +120550,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           </div>
           
           <button id="enter-app-btn" class="btn btn-primary w-full py-3 text-lg">
-            Enter AiAssist Secure
+            Enter DevNetwork
           </button>
         </div>
       </div>
@@ -120503,7 +120575,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       <div class="max-w-2xl mx-auto px-4 py-8">
         <div class="card text-center slide-up">
           <div class="mb-6">
-            <img src="/static/favicon.png" alt="AiAssist Secure" style="height: 64px; object-fit: contain; margin: 0 auto 16px; display: block; filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5)) drop-shadow(0 0 6px rgba(139, 92, 246, 0.3));" class="pulse-glow">
+            <img src="/static/logo-icon-dark.png" alt="DevNetwork" style="height: 64px; object-fit: contain; margin: 0 auto 16px; display: block; filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.4));" class="pulse-glow">
             <h2 class="text-3xl font-bold mb-2">
               <span class="shimmer-text">Network Activated</span>
             </h2>
@@ -122349,7 +122421,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       this.setActiveNav("nav-docs");
       const sections = [
         { id: "getting-started", title: "Getting Started", icon: "rocket", children: [
-          { id: "gs-overview", title: "What is AiAssist Secure?" },
+          { id: "gs-overview", title: "What is DevNetwork?" },
           { id: "gs-signup", title: "Creating Your Account" },
           { id: "gs-2fa", title: "Two-Factor Authentication" },
           { id: "gs-wizard", title: "Onboarding Wizard" },
@@ -122419,8 +122491,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       }
       const contentMap = {
         "gs-overview": `
-        <h1>What is AiAssist Secure?</h1>
-        <p>AiAssist Secure is a professional networking platform built for developers, designers, and builders looking to connect, collaborate, and grow. Think of it as a modern dev hub \u2014 real-time conversations and networking without the paywall.</p>
+        <h1>What is DevNetwork?</h1>
+        <p>DevNetwork is a professional networking platform built for developers, designers, and builders looking to connect, collaborate, and grow. Think of it as a modern dev hub \u2014 real-time conversations and networking without the paywall.</p>
         <h3>Core Philosophy</h3>
         <ul>
           <li>Works seamlessly on mobile and desktop</li>
@@ -122443,7 +122515,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "gs-signup": `
         <h1>Creating Your Account</h1>
-        <p>Registration on AiAssist Secure uses a unique device fingerprint combined with a username and two-factor authentication.</p>
+        <p>Registration on DevNetwork uses a unique device fingerprint combined with a username and two-factor authentication.</p>
         <h3>Step-by-Step</h3>
         <ol>
           <li>Visit the platform \u2014 your device fingerprint is generated automatically</li>
@@ -122462,7 +122534,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "gs-2fa": `
         <h1>Two-Factor Authentication</h1>
-        <p>AiAssist Secure requires Google TOTP (Time-based One-Time Password) for all accounts. This is mandatory and cannot be skipped.</p>
+        <p>DevNetwork requires Google TOTP (Time-based One-Time Password) for all accounts. This is mandatory and cannot be skipped.</p>
         <h3>Setup Process</h3>
         <ol>
           <li>Install <strong>Google Authenticator</strong> on your phone (iOS or Android)</li>
@@ -122492,7 +122564,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "gs-matchmaking": `
         <h1>Matchmaking & Network Reveal</h1>
-        <p>After completing the wizard, AiAssist Secure's matchmaking engine automatically connects you to relevant communities.</p>
+        <p>After completing the wizard, DevNetwork's matchmaking engine automatically connects you to relevant communities.</p>
         <h3>How Matchmaking Works</h3>
         <ol>
           <li>Your wizard answers are analyzed against 70+ pre-built communities</li>
@@ -122519,7 +122591,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "feed-posting": `
         <h1>Creating Posts</h1>
-        <p>Share updates, thoughts, and content with the entire AiAssist Secure community.</p>
+        <p>Share updates, thoughts, and content with the entire DevNetwork community.</p>
         <h3>How to Post</h3>
         <ol>
           <li>Click the text area at the top of the Feed page</li>
@@ -122537,7 +122609,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "feed-markdown": `
         <h1>Markdown & Formatting</h1>
-        <p>AiAssist Secure supports full GitHub Flavored Markdown (GFM) across posts, comments, community messages, and direct messages.</p>
+        <p>DevNetwork supports full GitHub Flavored Markdown (GFM) across posts, comments, community messages, and direct messages.</p>
         <h3>Supported Syntax</h3>
         <table>
           <thead><tr><th>Format</th><th>Syntax</th><th>Result</th></tr></thead>
@@ -122600,7 +122672,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "comm-overview": `
         <h1>Communities</h1>
-        <p>Communities are real-time messaging rooms organized by topic \u2014 similar to Slack channels or Telegram groups. They're the heart of AiAssist Secure's collaboration features.</p>
+        <p>Communities are real-time messaging rooms organized by topic \u2014 similar to Slack channels or Telegram groups. They're the heart of DevNetwork's collaboration features.</p>
         <h3>Features</h3>
         <ul>
           <li>Real-time messaging via WebSocket</li>
@@ -122673,7 +122745,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "comm-sharing": `
         <h1>External Sharing</h1>
-        <p>Every community has a shareable URL that can be distributed outside of AiAssist Secure.</p>
+        <p>Every community has a shareable URL that can be distributed outside of DevNetwork.</p>
         <h3>Share Link Format</h3>
         <p><code>https://your-domain/g/{slug}</code></p>
         <h3>What Happens</h3>
@@ -122716,7 +122788,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "notif-overview": `
         <h1>Notifications</h1>
-        <p>AiAssist Secure's notification system keeps you informed about activity that involves you.</p>
+        <p>DevNetwork's notification system keeps you informed about activity that involves you.</p>
         <h3>How It Works</h3>
         <ul>
           <li>Notifications appear in real time via WebSocket</li>
@@ -122744,7 +122816,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "profile-overview": `
         <h1>Your Profile</h1>
-        <p>Your profile showcases your professional identity on AiAssist Secure \u2014 built from your wizard answers and customizable fields.</p>
+        <p>Your profile showcases your professional identity on DevNetwork \u2014 built from your wizard answers and customizable fields.</p>
         <h3>Profile Fields</h3>
         <ul>
           <li><strong>Display Name</strong> \u2014 Your unique username</li>
@@ -122773,7 +122845,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "gep-overview": `
         <h1>What is Geppetto?</h1>
-        <p>Geppetto is AiAssist Secure's bot orchestration system. It's a system bot that helps you create, manage, and deploy bots through conversational commands in your DMs.</p>
+        <p>Geppetto is DevNetwork's bot orchestration system. It's a system bot that helps you create, manage, and deploy bots through conversational commands in your DMs.</p>
         <h3>How It Works</h3>
         <ol>
           <li>Open a DM with <strong>Geppetto</strong> (find it in your messages or the Bots page)</li>
@@ -122841,7 +122913,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
         <h1>Authentication & Tokens</h1>
         <p>Bots authenticate using bearer tokens in the format <code>dvn_bot_*</code>.</p>
         <h3>Token Format</h3>
-        <p>Tokens are prefixed with <code>dvn_bot_</code> followed by a random string. They are SHA-256 hashed before storage \u2014 AiAssist Secure never stores raw tokens.</p>
+        <p>Tokens are prefixed with <code>dvn_bot_</code> followed by a random string. They are SHA-256 hashed before storage \u2014 DevNetwork never stores raw tokens.</p>
         <h3>Using Your Token</h3>
         <p>Include the token in the <code>Authorization</code> header:</p>
         <pre><code>Authorization: Bearer dvn_bot_abc123xyz...</code></pre>
@@ -122861,7 +122933,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "gep-approval": `
         <h1>Approval System</h1>
-        <p>AiAssist Secure uses a two-tier approval system for bots:</p>
+        <p>DevNetwork uses a two-tier approval system for bots:</p>
         <h3>Tier 1: Global Approval</h3>
         <p>When you create a bot via Geppetto, it is auto-approved globally with the requested capabilities. There's no waiting period for basic bot creation.</p>
         <h3>Tier 2: Community Approval</h3>
@@ -123001,7 +123073,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       `,
         "sdk-python": `
         <h1>Python SDK</h1>
-        <p>Official Python client for the AiAssist Secure Bot API.</p>
+        <p>Official Python client for the DevNetwork Bot API.</p>
         <h3>Installation</h3>
         <pre><code>pip install devnetwork-bot</code></pre>
         <h3>Quick Start</h3>
@@ -123045,7 +123117,7 @@ asyncio.run(bot.connect_ws(on_message))</code></pre>
       `,
         "sdk-node": `
         <h1>Node.js SDK</h1>
-        <p>Official Node.js/TypeScript client for the AiAssist Secure Bot API.</p>
+        <p>Official Node.js/TypeScript client for the DevNetwork Bot API.</p>
         <h3>Installation</h3>
         <pre><code>npm install devnetwork-bot</code></pre>
         <h3>Quick Start</h3>
@@ -123081,7 +123153,7 @@ await bot.sendGroupMessage('group-uuid', 'Build passed!');</code></pre>
       `,
         "sdk-websocket": `
         <h1>WebSocket Events</h1>
-        <p>AiAssist Secure supports real-time communication via WebSocket connections.</p>
+        <p>DevNetwork supports real-time communication via WebSocket connections.</p>
         <h3>Endpoints</h3>
         <table>
           <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>

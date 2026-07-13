@@ -325,7 +325,7 @@ function BriefingWidget({ onOpen }: { onOpen: (appId: string) => void }) {
       </p>);
   }
   const bits: React.ReactNode[] = [];
-  if (b.unreadPings > 0) bits.push(<React.Fragment key="p"><Chip color="cyan" onClick={() => window.dispatchEvent(new CustomEvent("aios:classic", { detail: "feed" }))}>{b.unreadPings} ping{b.unreadPings === 1 ? "" : "s"}</Chip> waiting here on AiAssist Secure</React.Fragment>);
+  if (b.unreadPings > 0) bits.push(<React.Fragment key="p"><Chip color="cyan" onClick={() => window.dispatchEvent(new CustomEvent("aios:classic", { detail: "feed" }))}>{b.unreadPings} ping{b.unreadPings === 1 ? "" : "s"}</Chip> waiting here on DevNet</React.Fragment>);
   if (b.tokensUsed !== null) bits.push(<React.Fragment key="u"><Chip color="violet">{b.usagePct !== null ? `${b.usagePct.toFixed(0)}% of tokens` : `${(b.tokensUsed / 1000).toFixed(1)}k tokens`}</Chip> used this month</React.Fragment>);
   if (bits.length) {
     lines.push(
@@ -342,7 +342,7 @@ function BriefingWidget({ onOpen }: { onOpen: (appId: string) => void }) {
       {lines}
       <p className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-zinc-600">
         <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400/80" />
-        The Briefing · composed live from v1 production + AiAssist Secure · refreshes every 30s
+        The Briefing · composed live from v1 production + DevNet · refreshes every 30s
       </p>
     </div>
   );
