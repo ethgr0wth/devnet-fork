@@ -29,7 +29,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Send, File, Folder, FolderOpen,
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
   Zap, Bot, User, FileCode, FileJson, FileText, Trash2, Plus, Circle,
-  RotateCcw, CheckCircle2, Cpu, MessageSquare,
+  RotateCcw, CheckCircle2, Cpu, MessageSquare, Eye, Pencil,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -51,6 +51,7 @@ import {
 import { apiFetch } from "@/lib/queryClient";
 import { RuntimeSession } from "@/lib/runtimeSession";
 import { parseSurgicalEdits, stripPartialSentinels } from "@/lib/surgicalEdit";
+import { buildKeystoneChatBody, type EditorMode } from "@/lib/keystoneChat";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import QuestsWorkspace from "./QuestsWorkspace";
@@ -149,13 +150,17 @@ export default function KeystoneLiteWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
-  // chat mode — Keystone-Lite parity: _Gex reviews surgical edits before
-  // acceptance, Focus is research/docs only, Keystone auto-applies.
-  const [chatMode, setChatMode] = useState<"gex" | "focus" | "keystone">("gex");
-  // review gate: files awaiting Keep/Revert (path → pre-change snapshot)
-  const [pendingReview, setPendingReview] = useState<
-    Record<string, { snap: string; created: boolean }>
-  >({});
+  // modes — QuestsWorkspace parity: keystone (agentic, auto-apply) | focus
+  // (research/docs), plus the independent Read-Only ⟷ Read & Write toggle.
+  // _Gex is NOT a mode — it returns as a one-shot scan button with its own
+  // patch pipeline in a later parity increment.
+  const [editorMode, setEditorMode] = useState<EditorMode>("keystone");
+  const [readOnlyMode, setReadOnlyMode] = useState(false);
+  // chat settings — QW-parity request fields; the settings tab UI is the
+  // next increment (setters land with it).
+  const [ksTemperature] = useState(0.7);
+  const [ksMaxTokens] = useState(32768);
+  const [ksPersona] = useState("");
   // rollback: auto-apply stays on, but every applied change keeps a snapshot
   // (path → pre-change content; created=true means revert deletes the file)
   const [agentChanges, setAgentChanges] = useState<
@@ -483,35 +488,6 @@ export default function KeystoneLiteWorkspace() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  // ── review gate (_Gex/Focus): nothing is accepted until Keep ──────────────
-
-  const keepReviewed = async () => {
-    const files = Object.keys(pendingReview);
-    if (files.length === 0) return;
-    setAgentChanges((prev) => ({ ...pendingReview, ...prev }));
-    setPendingReview({});
-    await absorbAgentChanges(files);
-  };
-
-  const revertReviewed = async () => {
-    for (const [fp, entry] of Object.entries(pendingReview)) {
-      await revertFile(fp, entry);
-    }
-    setPendingReview({});
-    toast.success("Pending edits reverted — workspace restored");
-  };
-
-  const revertOnePending = async (fp: string) => {
-    const entry = pendingReview[fp];
-    if (!entry) return;
-    await revertFile(fp, entry);
-    setPendingReview((prev) => {
-      const next = { ...prev };
-      delete next[fp];
-      return next;
-    });
-  };
-
   const sendMessage = async () => {
     const text = chatInput.trim();
     if (!text || sending) return;
@@ -556,16 +532,21 @@ export default function KeystoneLiteWorkspace() {
               ? { "X-Auth-Hash": tok, "X-Session-Token": tok }
               : {}),
           },
-          body: JSON.stringify({
-            message: text,
-            model:
-              selectedModel && selectedModel !== "auto"
-                ? selectedModel
-                : undefined,
-            // Keystone-Lite mode flags (quests.py ChatRequest)
-            gex_mode: chatMode === "gex" || undefined,
-            focus_mode: chatMode === "focus" || undefined,
-          }),
+          body: JSON.stringify(
+            // QuestsWorkspace-exact request body (see lib/keystoneChat.ts,
+            // matrix-tested in scripts/test-frontend-libs.mjs)
+            buildKeystoneChatBody({
+              message: text,
+              model: selectedModel,
+              editorMode,
+              readOnlyMode,
+              settings: {
+                temperature: ksTemperature,
+                maxTokens: ksMaxTokens,
+                persona: ksPersona,
+              },
+            })
+          ),
           credentials: "include",
           signal: abortCtrl.signal,
         }
@@ -671,17 +652,15 @@ export default function KeystoneLiteWorkspace() {
               }
               for (const f of data.files_edited || []) touched.add(f);
               const finalTouched = [...touched];
-              // remember how to undo each change; in _Gex/Focus the entries
-              // feed the review gate instead of the applied-changes strip
+              // remember how to undo each change (QW parity: auto-apply with
+              // the applied-changes strip as the undo)
               const entries: Record<string, { snap: string; created: boolean }> = {};
               for (const f of finalTouched) {
                 const snap = snapshotsRef.current[f] ?? "";
                 entries[f] = { snap, created: writtenSet.has(f) && !snap };
               }
-              if (chatMode === "keystone") {
+              if (finalTouched.length > 0) {
                 setAgentChanges((prev) => ({ ...entries, ...prev }));
-              } else if (finalTouched.length > 0) {
-                setPendingReview((prev) => ({ ...entries, ...prev }));
               }
               setMessages((prev) =>
                 prev.map((m) =>
@@ -696,18 +675,9 @@ export default function KeystoneLiteWorkspace() {
                     : m
                 )
               );
-              if (chatMode === "keystone") {
-                // Keystone mode: agentic auto-apply (lite parity)
-                await absorbAgentChanges(finalTouched);
-              } else if (finalTouched.length > 0) {
-                // _Gex/Focus: hold for review — refresh the tree so results
-                // are inspectable; nothing is accepted until Keep.
-                loadFileTree();
-                toast.info(
-                  `${finalTouched.length} edit${finalTouched.length > 1 ? "s" : ""} awaiting review`,
-                  { duration: 4000 }
-                );
-              }
+              // QW parity: auto-apply; focus/read-only chats produce no
+              // file changes, so this is a no-op there.
+              await absorbAgentChanges(finalTouched);
               break;
             }
             case "error":
@@ -1393,23 +1363,39 @@ export default function KeystoneLiteWorkspace() {
                 </span>
                 <div className="ml-1 flex rounded border border-white/10 bg-black/40 p-0.5" data-testid="ksl-mode">
                   {([
-                    ["gex", "_Gex", "Review surgical edits before accepting", "bg-cyan-500/15 text-cyan-300"],
-                    ["focus", "Focus", "Research & documentation only", "bg-purple-500/15 text-purple-300"],
-                    ["keystone", "Keystone", "Agentic coding with auto-apply", "bg-amber-500/15 text-amber-300"],
+                    ["keystone", "Keystone", "Keystone Mode: agentic coding with auto-apply", "bg-amber-500/15 text-amber-300"],
+                    ["focus", "Focus", "Focus Mode: research & documentation only", "bg-purple-500/15 text-purple-300"],
                   ] as const).map(([id, label, title, on]) => (
                     <button
                       key={id}
-                      onClick={() => setChatMode(id)}
+                      onClick={() => setEditorMode(id)}
                       title={title}
                       data-testid={`ksl-mode-${id}`}
                       className={`rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider transition-colors ${
-                        chatMode === id ? on : "text-zinc-600 hover:text-zinc-300"
+                        editorMode === id ? on : "text-zinc-600 hover:text-zinc-300"
                       }`}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
+                <button
+                  onClick={() => setReadOnlyMode((v) => !v)}
+                  title={
+                    readOnlyMode
+                      ? "Read-Only: AI explains code without making changes"
+                      : "Read & Write: AI can create and edit files"
+                  }
+                  data-testid="ksl-toggle-read-write"
+                  className={`ml-1 flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider ${
+                    readOnlyMode
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                      : "border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-300"
+                  }`}
+                >
+                  {readOnlyMode ? <Eye className="h-2.5 w-2.5" /> : <Pencil className="h-2.5 w-2.5" />}
+                  {readOnlyMode ? "Read only" : "Read & write"}
+                </button>
                 <div className="ml-auto flex items-center gap-1">
                   <Select
                     value={effectiveProvider}
@@ -1460,9 +1446,11 @@ export default function KeystoneLiteWorkspace() {
                     <p className="text-[12px]">
                       Ask the agent to build something.
                       <br />
-                      {chatMode === "keystone"
-                        ? "File changes are applied automatically."
-                        : "File changes wait for your review."}
+                      {readOnlyMode
+                        ? "Read-only: the AI explains without changing files."
+                        : editorMode === "focus"
+                          ? "Focus: research & docs — no file changes."
+                          : "File changes are applied automatically."}
                     </p>
                   </div>
                 )}
@@ -1512,13 +1500,9 @@ export default function KeystoneLiteWorkspace() {
                               const { edits, explanation, inProgressFile } =
                                 parseSurgicalEdits(m.content);
                               const clean = stripPartialSentinels(explanation);
-                              const pending = (m.filesTouched || []).some(
-                                (f) => f in pendingReview
-                              );
                               const streaming =
                                 !!inProgressFile || edits.some((e) => e.partial);
-                              const applied =
-                                !streaming && (chatMode === "keystone" || !pending);
+                              const applied = !streaming;
                               return (
                                 <>
                                   {(edits.length > 0 || inProgressFile) && (
@@ -1541,11 +1525,7 @@ export default function KeystoneLiteWorkspace() {
                                               : "text-amber-300"
                                         }`}
                                       >
-                                        {streaming
-                                          ? "Editing — streaming"
-                                          : applied
-                                            ? "Applied"
-                                            : "Surgical edits — review below"}{" "}
+                                        {streaming ? "Editing — streaming" : "Applied"}{" "}
                                         ({edits.length || 1})
                                       </div>
                                       {inProgressFile &&
@@ -1629,54 +1609,6 @@ export default function KeystoneLiteWorkspace() {
                 ))}
                 <div ref={chatEndRef} />
               </div>
-
-              {/* review gate (_Gex/Focus): pending edits — Keep or Revert */}
-              {Object.keys(pendingReview).length > 0 && (
-                <div
-                  className="shrink-0 border-t border-amber-500/20 bg-amber-500/[0.04] px-2.5 py-1.5"
-                  data-testid="ksl-review-strip"
-                >
-                  <div className="mb-1 flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-300">
-                      Surgical edits — review ({Object.keys(pendingReview).length})
-                    </span>
-                    <button
-                      onClick={keepReviewed}
-                      className="ml-auto flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20"
-                      data-testid="ksl-review-keep"
-                    >
-                      <CheckCircle2 className="h-2.5 w-2.5" /> Keep all
-                    </button>
-                    <button
-                      onClick={revertReviewed}
-                      className="flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20"
-                      data-testid="ksl-review-revert"
-                    >
-                      <RotateCcw className="h-2.5 w-2.5" /> Revert all
-                    </button>
-                  </div>
-                  <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
-                    {Object.entries(pendingReview).map(([fp, ch]) => (
-                      <span
-                        key={fp}
-                        className="flex items-center gap-1 rounded border border-amber-500/15 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-zinc-300"
-                      >
-                        <button onClick={() => openFile(fp)} className="hover:text-cyan-300" title={fp}>
-                          {baseName(fp)}
-                          {ch.created ? " (new)" : ""}
-                        </button>
-                        <button
-                          onClick={() => revertOnePending(fp)}
-                          className="text-zinc-600 hover:text-amber-300"
-                          title="Revert this file"
-                        >
-                          <RotateCcw className="h-2.5 w-2.5" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* applied-changes strip: auto-apply stays on, this is the undo */}
               {Object.keys(agentChanges).length > 0 && (
