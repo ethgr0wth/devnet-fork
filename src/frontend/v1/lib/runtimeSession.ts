@@ -32,6 +32,93 @@ export interface ShellResult extends RunCodeResult {
 /** Inner shell timeout; the run_code cap rides 10s above it (lite parity). */
 const SHELL_TIMEOUT_SECONDS = 55;
 
+export interface ShellRunCode {
+  code: string;
+  marker: string;
+  timeoutSeconds: number;
+}
+
+/**
+ * Build the python run_code payload for ONE interactive shell line — the
+ * pure half of keystone-lite's runShellCommand + runRemoteTerminalCommand,
+ * exported so pages with their own session plumbing (QuestsWorkspace's
+ * bottom shell dock) ride the exact same wrapper:
+ *   - cwd containment (realpath under the workspace root)
+ *   - process-group SIGKILL + exit 124 + notice on timeout
+ *   - a per-call cwd marker captures the shell's final $PWD so `cd`
+ *     persists to the next line
+ */
+export function buildShellRunCode(command: string, workingDirectory = "."): ShellRunCode {
+  const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, "")}__`;
+  const shellCommand = [
+    command,
+    "__keystone_exit=$?",
+    `printf '\\n${marker}%s\\n' "$PWD"`,
+    'exit "$__keystone_exit"',
+  ].join("\n");
+  const code = [
+    "import os, signal, subprocess, sys",
+    "root = os.path.realpath(os.getcwd())",
+    `requested = ${JSON.stringify(workingDirectory)}`,
+    "workdir = os.path.realpath(os.path.join(root, requested))",
+    "if os.path.commonpath([root, workdir]) != root or not os.path.isdir(workdir):",
+    "    sys.stderr.write('Invalid remote working directory')",
+    "    sys.exit(2)",
+    `p = subprocess.Popen(${JSON.stringify(shellCommand)}, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir, start_new_session=True)`,
+    "try:",
+    `    out, err = p.communicate(timeout=${SHELL_TIMEOUT_SECONDS})`,
+    "except subprocess.TimeoutExpired:",
+    "    os.killpg(p.pid, signal.SIGKILL)",
+    "    out, err = p.communicate()",
+    "    sys.stdout.write(out or '')",
+    "    sys.stderr.write(err or '')",
+    `    sys.stderr.write('\\n[command timed out after ${SHELL_TIMEOUT_SECONDS}s]')`,
+    "    sys.exit(124)",
+    "sys.stdout.write(out or '')",
+    "sys.stderr.write(err or '')",
+    "sys.exit(p.returncode or 0)",
+  ].join("\n");
+  return { code, marker, timeoutSeconds: SHELL_TIMEOUT_SECONDS + 10 };
+}
+
+/**
+ * Post-process a shell run: strip the cwd marker, compute the
+ * workspace-relative cwd, and scrub the runtime's absolute workspace root
+ * (/…/workspaces/{sessionId}) from output so host paths never leak.
+ */
+export function parseShellRunResult(
+  result: RunCodeResult,
+  marker: string,
+  sessionId: string,
+  workingDirectory = "."
+): ShellResult {
+  let stdout = result.stdout || "";
+  let stderr = result.stderr || "";
+  let cwd = workingDirectory;
+  const markerIndex = stdout.lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    const beforeMarker = stdout.slice(0, markerIndex).replace(/\n$/, "");
+    const absoluteCwd = stdout
+      .slice(markerIndex + marker.length)
+      .split(/\r?\n/, 1)[0]
+      .trim();
+    stdout = beforeMarker;
+
+    const workspaceToken = `/workspaces/${sessionId}`;
+    const workspaceIndex = absoluteCwd.indexOf(workspaceToken);
+    if (workspaceIndex >= 0) {
+      const runtimeWorkspaceRoot = absoluteCwd.slice(0, workspaceIndex + workspaceToken.length);
+      stdout = stdout.split(runtimeWorkspaceRoot).join("/workspace");
+      stderr = stderr.split(runtimeWorkspaceRoot).join("/workspace");
+      const relative = absoluteCwd
+        .slice(workspaceIndex + workspaceToken.length)
+        .replace(/^\/+/, "");
+      cwd = relative || ".";
+    }
+  }
+  return { ...result, stdout, stderr, cwd };
+}
+
 export class RuntimeHttpError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -222,72 +309,9 @@ export class RuntimeSession {
    */
   runShell(command: string, workingDirectory = "."): Promise<ShellResult> {
     return this.withSession(async (sessionId) => {
-      const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, "")}__`;
-      const shellCommand = [
-        command,
-        "__keystone_exit=$?",
-        `printf '\\n${marker}%s\\n' "$PWD"`,
-        'exit "$__keystone_exit"',
-      ].join("\n");
-      const code = [
-        "import os, signal, subprocess, sys",
-        "root = os.path.realpath(os.getcwd())",
-        `requested = ${JSON.stringify(workingDirectory)}`,
-        "workdir = os.path.realpath(os.path.join(root, requested))",
-        "if os.path.commonpath([root, workdir]) != root or not os.path.isdir(workdir):",
-        "    sys.stderr.write('Invalid remote working directory')",
-        "    sys.exit(2)",
-        `p = subprocess.Popen(${JSON.stringify(shellCommand)}, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir, start_new_session=True)`,
-        "try:",
-        `    out, err = p.communicate(timeout=${SHELL_TIMEOUT_SECONDS})`,
-        "except subprocess.TimeoutExpired:",
-        "    os.killpg(p.pid, signal.SIGKILL)",
-        "    out, err = p.communicate()",
-        "    sys.stdout.write(out or '')",
-        "    sys.stderr.write(err or '')",
-        `    sys.stderr.write('\\n[command timed out after ${SHELL_TIMEOUT_SECONDS}s]')`,
-        "    sys.exit(124)",
-        "sys.stdout.write(out or '')",
-        "sys.stderr.write(err or '')",
-        "sys.exit(p.returncode or 0)",
-      ].join("\n");
-
-      const result = await this.execRunCode(
-        sessionId,
-        "python",
-        code,
-        SHELL_TIMEOUT_SECONDS + 10
-      );
-
-      let stdout = result.stdout || "";
-      let stderr = result.stderr || "";
-      let cwd = workingDirectory;
-      const markerIndex = stdout.lastIndexOf(marker);
-      if (markerIndex >= 0) {
-        const beforeMarker = stdout.slice(0, markerIndex).replace(/\n$/, "");
-        const absoluteCwd = stdout
-          .slice(markerIndex + marker.length)
-          .split(/\r?\n/, 1)[0]
-          .trim();
-        stdout = beforeMarker;
-
-        const workspaceToken = `/workspaces/${sessionId}`;
-        const workspaceIndex = absoluteCwd.indexOf(workspaceToken);
-        if (workspaceIndex >= 0) {
-          const runtimeWorkspaceRoot = absoluteCwd.slice(
-            0,
-            workspaceIndex + workspaceToken.length
-          );
-          stdout = stdout.split(runtimeWorkspaceRoot).join("/workspace");
-          stderr = stderr.split(runtimeWorkspaceRoot).join("/workspace");
-          const relative = absoluteCwd
-            .slice(workspaceIndex + workspaceToken.length)
-            .replace(/^\/+/, "");
-          cwd = relative || ".";
-        }
-      }
-
-      return { ...result, stdout, stderr, cwd };
+      const { code, marker, timeoutSeconds } = buildShellRunCode(command, workingDirectory);
+      const result = await this.execRunCode(sessionId, "python", code, timeoutSeconds);
+      return parseShellRunResult(result, marker, sessionId, workingDirectory);
     });
   }
 

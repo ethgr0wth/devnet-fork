@@ -54,6 +54,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { apiFetch } from "@/lib/queryClient";
+import { buildShellRunCode, parseShellRunResult, type ShellResult } from "@/lib/runtimeSession";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 
@@ -646,6 +647,15 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
   };
   const [termOutput, setTermOutput] = useState<{ stdout: string; stderr: string; exit_code: number } | null>(null);
   const [termRunning, setTermRunning] = useState(false);
+
+  // bottom shell dock (KLW-style) — arbitrary remote commands with the
+  // cwd-marker wrapper; SEPARATE from the Code Runner tab above.
+  const [shellOpen, setShellOpen] = useState(true);
+  const [shellCmd, setShellCmd] = useState("");
+  const [shellCwd, setShellCwd] = useState(".");
+  const [shellOut, setShellOut] = useState<ShellResult | null>(null);
+  const [shellRunning, setShellRunning] = useState(false);
+  useEffect(() => { setShellCwd("."); setShellOut(null); }, [runtimeSessionId]);
   const [pkgName, setPkgName] = useState("");
   const [pkgEco, setPkgEco] = useState<"python" | "node">("python");
   const [pkgInstalling, setPkgInstalling] = useState(false);
@@ -1653,6 +1663,52 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
       toast.error("Failed to install package");
     } finally {
       setPkgInstalling(false);
+    }
+  };
+
+  // One shell line on the runtime session — lite's cwd-marker wrapper via
+  // lib/runtimeSession (cd persists between runs, host paths scrubbed to
+  // /workspace, exit 124 + notice on the 55s timeout).
+  const runShellLine = async () => {
+    const cmd = shellCmd.trim();
+    if (!cmd || shellRunning || !runtimeSessionId) return;
+    setShellRunning(true);
+    try {
+      const { code, marker, timeoutSeconds } = buildShellRunCode(cmd, shellCwd);
+      const res = await apiFetch("/api/runtime/run_code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: runtimeSessionId,
+          language: "python",
+          code,
+          timeout_seconds: timeoutSeconds,
+          environment_id: envId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setShellOut({
+          exit_code: -1,
+          stdout: "",
+          stderr: data?.detail || `Shell failed (${res.status})${res.status === 409 ? " — session binding stale, re-init the runtime" : ""}`,
+          cwd: shellCwd,
+        });
+        return;
+      }
+      const parsed = parseShellRunResult(data, marker, runtimeSessionId, shellCwd);
+      setShellCwd(parsed.cwd || ".");
+      setShellOut(parsed);
+      setShellCmd("");
+    } catch (e) {
+      setShellOut({
+        exit_code: -1,
+        stdout: "",
+        stderr: e instanceof Error ? e.message : String(e),
+        cwd: shellCwd,
+      });
+    } finally {
+      setShellRunning(false);
     }
   };
 
@@ -4194,6 +4250,43 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
+      </div>
+
+      {/* ── shell dock (KLW-style): arbitrary commands, cd persists ── */}
+      <div className="flex-shrink-0 border-t border-border bg-black/40" data-testid="qw-shell-dock">
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <button
+            onClick={() => setShellOpen((v) => !v)}
+            className="font-mono text-xs text-muted-foreground hover:text-foreground"
+            title={shellOpen ? "Collapse output" : "Expand output"}
+            data-testid="qw-shell-toggle"
+          >
+            {shellOpen ? "▾" : "▸"}
+          </button>
+          <Terminal className="h-3.5 w-3.5 text-emerald-400" />
+          <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Shell</span>
+          <span className="font-mono text-[11px] text-emerald-400/80" data-testid="qw-shell-cwd">
+            ~/workspace{shellCwd === "." ? "" : `/${shellCwd}`} $
+          </span>
+          <input
+            value={shellCmd}
+            onChange={(e) => setShellCmd(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void runShellLine(); } }}
+            placeholder={runtimeSessionId ? "npm install · ls -la · git status — cd persists between runs" : "initialize the runtime to use the shell"}
+            disabled={!runtimeSessionId || shellRunning}
+            spellCheck={false}
+            className="flex-1 bg-transparent font-mono text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50"
+            data-testid="qw-shell-input"
+          />
+          {shellRunning && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />}
+        </div>
+        {shellOpen && shellOut && (
+          <div className="max-h-40 overflow-y-auto border-t border-border/50 px-3 py-2 font-mono text-xs" data-testid="qw-shell-output">
+            {shellOut.stdout && <pre className="whitespace-pre-wrap text-emerald-300/90">{shellOut.stdout}</pre>}
+            {shellOut.stderr && <pre className="whitespace-pre-wrap text-red-300/90">{shellOut.stderr}</pre>}
+            <div className="mt-1 text-[10px] text-muted-foreground">exit {shellOut.exit_code}</div>
+          </div>
+        )}
       </div>
     </div>
   );
