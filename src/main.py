@@ -510,31 +510,68 @@ async def bridge_sync_workspaces(request: Request,
                   if isinstance(envs_body, dict) else None) \
         or me.get("active_environment_id") or ""
 
-    # Paginated pull — upstream caps at 100 per page. Pull up to 5 pages
-    # (500 workspaces) per pass to stay inside the governor's budget. If a
-    # LATER page fails we keep what we got but must NOT archive: an
-    # incomplete listing would make missing workspaces look deleted.
+    # PER-ENVIRONMENT workspace pull (premium entitlement-separated key sets
+    # → separate workspaces per environment). We enumerate EACH environment
+    # via the environment_id query param (aias PR #69) so non-active envs'
+    # workspaces are bridged too — not just the active env's. Communities are
+    # then bucketed by the environment_id RETURNED on each preview (also #69),
+    # never by which env we requested (see the eco_id line in the loop below).
+    #
+    # DEPLOY-ORDER SAFE: if aias hasn't shipped #69 yet, the param is ignored
+    # (every env returns the active env's set) and previews carry no
+    # environment_id → dedup-by-id collapses the repeats and eco_id falls back
+    # to active_env. That is exactly the pre-#69 (#64) behavior — no regression.
+    #
+    # Upstream caps at 100/page. Budget: up to 5 pages/env, capped at 15 pages
+    # total across all envs, to stay inside the governor. A first-call failure
+    # is fatal (502); a later failure keeps what we got but blocks archival
+    # (an incomplete listing would make missing workspaces look deleted).
+    env_ids = [e.get("id") for e in envs if e.get("id")]
+    if active_env and active_env not in env_ids:
+        env_ids.append(active_env)
+    if not env_ids:
+        env_ids = [None]  # nothing listed → single active-env pull (no param)
+
     workspaces = []
+    seen_ws = set()
     complete_pull = True
-    ws_offset = 0
-    for _ in range(5):
-        ws_body = await _bridge_upstream(
-            token, f"/api/user/workspaces?limit=100&offset={ws_offset}")
-        if ws_body is None:
-            if ws_offset == 0:
-                return JSONResponse({"success": False,
-                                     "error": "AiAS production unreachable."},
-                                    status_code=502)
+    pages_used = 0
+    PAGES_PER_ENV, GLOBAL_PAGE_BUDGET = 5, 15
+    first_attempt = True
+    for eid in env_ids:
+        if pages_used >= GLOBAL_PAGE_BUDGET:
             complete_pull = False
             break
-        page = ws_body.get("workspaces") or []
-        workspaces.extend(page)
-        if not page or not ws_body.get("has_more"):
-            break
-        ws_offset += len(page)
-    else:
-        # 5 full pages and upstream still reports more — listing is truncated.
-        complete_pull = False
+        ws_offset = 0
+        for _ in range(PAGES_PER_ENV):
+            if pages_used >= GLOBAL_PAGE_BUDGET:
+                complete_pull = False
+                break
+            pages_used += 1
+            q = f"/api/user/workspaces?limit=100&offset={ws_offset}"
+            if eid:
+                q += f"&environment_id={eid}"
+            ws_body = await _bridge_upstream(token, q)
+            if ws_body is None:
+                if first_attempt:
+                    return JSONResponse({"success": False,
+                                         "error": "AiAS production unreachable."},
+                                        status_code=502)
+                complete_pull = False
+                break
+            first_attempt = False
+            page = ws_body.get("workspaces") or []
+            for w in page:
+                wid = w.get("id")
+                if wid and wid not in seen_ws:
+                    seen_ws.add(wid)
+                    workspaces.append(w)
+            if not page or not ws_body.get("has_more"):
+                break
+            ws_offset += len(page)
+        else:
+            # Ran the full per-env page budget with more still pending.
+            complete_pull = False
 
     now = datetime.utcnow()
     counts = {"ecosystems": 0, "communities_created": 0,
