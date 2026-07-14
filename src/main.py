@@ -464,6 +464,32 @@ def _slugify(text: str, fallback: str) -> str:
     return f"{base or 'workspace'}-{fallback[:6]}"
 
 
+def _map_v1_workspace_messages(messages, viewer_id: str, viewer_name: str):
+    """Map v1 workspace messages (role-based: user|ai|manager) onto the
+    community room's author shape. `manager` messages are the operator, so
+    they carry the viewer's id (render as 'me'); `user`/`ai` get stable
+    synthetic ids so the room labels them Client / AI on the other side."""
+    role_meta = {
+        "user": ("aias:client", "Client"),
+        "ai": ("aias:ai", "AI"),
+        "assistant": ("aias:ai", "AI"),
+        "manager": (viewer_id, viewer_name),
+    }
+    out = []
+    for m in messages:
+        role = str(m.get("role") or "user").lower()
+        uid, name = role_meta.get(role, (f"aias:{role}", role.title() or "Unknown"))
+        out.append({
+            "id": m.get("id"),
+            "user_id": uid,
+            "content": m.get("content", ""),
+            "created_at": m.get("created_at") or m.get("timestamp") or "",
+            "author": {"id": uid, "displayName": name, "avatar": ""},
+            "origin": "aias_v1",
+        })
+    return out
+
+
 async def _bridge_upstream(token: str, path: str):
     try:
         async with governor.slot():
@@ -4274,8 +4300,28 @@ async def get_group_messages(group_id: str, x_auth_hash: Optional[str] = Header(
     
     batch_key = f"notification:batch:{user['id']}:{group_id}"
     redis_client.delete(batch_key)
-    
+
     limit = min(limit, 100)
+
+    # Bridged twins: the conversation lane lives on v1 production, NOT in the
+    # local group:messages list (which is empty for them). Proxy the workspace
+    # history — the community id IS the v1 workspace id — and map v1's
+    # role-based messages onto the room's author shape. (Same-origin federated
+    # token, same path the bridge uses.)
+    grp_raw = redis_client.get(f"group:{group_id}")
+    grp = json.loads(str(grp_raw)) if grp_raw else None
+    if grp and grp.get("origin") == "aias_v1":
+        body = await _bridge_upstream(
+            x_auth_hash or "", f"/api/workspaces/{group_id}/messages?limit={limit}")
+        if body is None:
+            return JSONResponse({"messages": [], "has_more": False,
+                                 "next_before": None, "upstream_unreachable": True})
+        mapped = _map_v1_workspace_messages(
+            body.get("messages") or [], user["id"],
+            user.get("displayName") or "Operator")
+        # v1's endpoint is latest-N (no cursor), so no server-side paging here.
+        return JSONResponse({"messages": mapped, "has_more": False, "next_before": None})
+
     list_key = f"group:messages:{group_id}"
     total = redis_client.llen(list_key)
     
