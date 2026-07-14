@@ -15,9 +15,11 @@
  *   └──────────────────────────────────────────────────────────────┘
  *
  * Design system: bg #0a0a0f, cyan-400 accents, border-white/5, mono type.
- * Behavior: agent file changes are AUTO-APPROVED — no review gate. Changes
- * stream in, are applied by the backend, and this UI simply refreshes and
- * opens the touched files.
+ * Behavior: chat modes follow Keystone-Lite (_Gex · Focus · Keystone).
+ * Keystone mode auto-applies. _Gex/Focus hold streamed changes in a review
+ * gate — Keep accepts, Revert restores the exact pre-change snapshots the
+ * backend streams. Edits land in the env workspace immediately either way;
+ * the gate governs ACCEPTANCE, riding the snapshot/rollback rails.
  *
  * Mobile (<768px) renders the original QuestsWorkspace untouched.
  */
@@ -145,6 +147,13 @@ export default function KeystoneLiteWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  // chat mode — Keystone-Lite parity: _Gex reviews surgical edits before
+  // acceptance, Focus is research/docs only, Keystone auto-applies.
+  const [chatMode, setChatMode] = useState<"gex" | "focus" | "keystone">("gex");
+  // review gate: files awaiting Keep/Revert (path → pre-change snapshot)
+  const [pendingReview, setPendingReview] = useState<
+    Record<string, { snap: string; created: boolean }>
+  >({});
   // rollback: auto-apply stays on, but every applied change keeps a snapshot
   // (path → pre-change content; created=true means revert deletes the file)
   const [agentChanges, setAgentChanges] = useState<
@@ -459,6 +468,35 @@ export default function KeystoneLiteWorkspace() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
+  // ── review gate (_Gex/Focus): nothing is accepted until Keep ──────────────
+
+  const keepReviewed = async () => {
+    const files = Object.keys(pendingReview);
+    if (files.length === 0) return;
+    setAgentChanges((prev) => ({ ...pendingReview, ...prev }));
+    setPendingReview({});
+    await absorbAgentChanges(files);
+  };
+
+  const revertReviewed = async () => {
+    for (const [fp, entry] of Object.entries(pendingReview)) {
+      await revertFile(fp, entry);
+    }
+    setPendingReview({});
+    toast.success("Pending edits reverted — workspace restored");
+  };
+
+  const revertOnePending = async (fp: string) => {
+    const entry = pendingReview[fp];
+    if (!entry) return;
+    await revertFile(fp, entry);
+    setPendingReview((prev) => {
+      const next = { ...prev };
+      delete next[fp];
+      return next;
+    });
+  };
+
   const sendMessage = async () => {
     const text = chatInput.trim();
     if (!text || sending) return;
@@ -487,6 +525,11 @@ export default function KeystoneLiteWorkspace() {
     try {
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
+      // Same token transport as apiFetch — the raw SSE fetch must ride the
+      // federated session exactly like every sibling call in this file.
+      const tok =
+        localStorage.getItem("devnetwork_hash") ||
+        localStorage.getItem("aias_session_token");
       const response = await fetch(
         `/api/keystone/environments/${envId}/chat/stream`,
         {
@@ -494,6 +537,9 @@ export default function KeystoneLiteWorkspace() {
           headers: {
             "Content-Type": "application/json",
             "X-AiAssist-Provider": effectiveProvider,
+            ...(tok && !tok.startsWith("dvs_")
+              ? { "X-Auth-Hash": tok, "X-Session-Token": tok }
+              : {}),
           },
           body: JSON.stringify({
             message: text,
@@ -501,6 +547,9 @@ export default function KeystoneLiteWorkspace() {
               selectedModel && selectedModel !== "auto"
                 ? selectedModel
                 : undefined,
+            // Keystone-Lite mode flags (quests.py ChatRequest)
+            gex_mode: chatMode === "gex" || undefined,
+            focus_mode: chatMode === "focus" || undefined,
           }),
           credentials: "include",
           signal: abortCtrl.signal,
@@ -607,17 +656,18 @@ export default function KeystoneLiteWorkspace() {
               }
               for (const f of data.files_edited || []) touched.add(f);
               const finalTouched = [...touched];
-              // remember how to undo each change (auto-apply stays on)
-              setAgentChanges((prev) => {
-                const next = { ...prev };
-                for (const f of finalTouched) {
-                  if (next[f] === undefined) {
-                    const snap = snapshotsRef.current[f] ?? "";
-                    next[f] = { snap, created: writtenSet.has(f) && !snap };
-                  }
-                }
-                return next;
-              });
+              // remember how to undo each change; in _Gex/Focus the entries
+              // feed the review gate instead of the applied-changes strip
+              const entries: Record<string, { snap: string; created: boolean }> = {};
+              for (const f of finalTouched) {
+                const snap = snapshotsRef.current[f] ?? "";
+                entries[f] = { snap, created: writtenSet.has(f) && !snap };
+              }
+              if (chatMode === "keystone") {
+                setAgentChanges((prev) => ({ ...entries, ...prev }));
+              } else if (finalTouched.length > 0) {
+                setPendingReview((prev) => ({ ...entries, ...prev }));
+              }
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === draftId
@@ -631,8 +681,18 @@ export default function KeystoneLiteWorkspace() {
                     : m
                 )
               );
-              // AUTO-APPROVE: absorb the agent's writes immediately
-              await absorbAgentChanges(finalTouched);
+              if (chatMode === "keystone") {
+                // Keystone mode: agentic auto-apply (lite parity)
+                await absorbAgentChanges(finalTouched);
+              } else if (finalTouched.length > 0) {
+                // _Gex/Focus: hold for review — refresh the tree so results
+                // are inspectable; nothing is accepted until Keep.
+                loadFileTree();
+                toast.info(
+                  `${finalTouched.length} edit${finalTouched.length > 1 ? "s" : ""} awaiting review`,
+                  { duration: 4000 }
+                );
+              }
               break;
             }
             case "error":
@@ -1186,6 +1246,25 @@ export default function KeystoneLiteWorkspace() {
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Agent
                 </span>
+                <div className="ml-1 flex rounded border border-white/10 bg-black/40 p-0.5" data-testid="ksl-mode">
+                  {([
+                    ["gex", "_Gex", "Review surgical edits before accepting", "bg-cyan-500/15 text-cyan-300"],
+                    ["focus", "Focus", "Research & documentation only", "bg-purple-500/15 text-purple-300"],
+                    ["keystone", "Keystone", "Agentic coding with auto-apply", "bg-amber-500/15 text-amber-300"],
+                  ] as const).map(([id, label, title, on]) => (
+                    <button
+                      key={id}
+                      onClick={() => setChatMode(id)}
+                      title={title}
+                      data-testid={`ksl-mode-${id}`}
+                      className={`rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider transition-colors ${
+                        chatMode === id ? on : "text-zinc-600 hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="ml-auto flex items-center gap-1">
                   <Select
                     value={effectiveProvider}
@@ -1236,7 +1315,9 @@ export default function KeystoneLiteWorkspace() {
                     <p className="text-[12px]">
                       Ask the agent to build something.
                       <br />
-                      File changes are applied automatically.
+                      {chatMode === "keystone"
+                        ? "File changes are applied automatically."
+                        : "File changes wait for your review."}
                     </p>
                   </div>
                 )}
@@ -1306,6 +1387,54 @@ export default function KeystoneLiteWorkspace() {
                 ))}
                 <div ref={chatEndRef} />
               </div>
+
+              {/* review gate (_Gex/Focus): pending edits — Keep or Revert */}
+              {Object.keys(pendingReview).length > 0 && (
+                <div
+                  className="shrink-0 border-t border-amber-500/20 bg-amber-500/[0.04] px-2.5 py-1.5"
+                  data-testid="ksl-review-strip"
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-300">
+                      Surgical edits — review ({Object.keys(pendingReview).length})
+                    </span>
+                    <button
+                      onClick={keepReviewed}
+                      className="ml-auto flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20"
+                      data-testid="ksl-review-keep"
+                    >
+                      <CheckCircle2 className="h-2.5 w-2.5" /> Keep all
+                    </button>
+                    <button
+                      onClick={revertReviewed}
+                      className="flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20"
+                      data-testid="ksl-review-revert"
+                    >
+                      <RotateCcw className="h-2.5 w-2.5" /> Revert all
+                    </button>
+                  </div>
+                  <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
+                    {Object.entries(pendingReview).map(([fp, ch]) => (
+                      <span
+                        key={fp}
+                        className="flex items-center gap-1 rounded border border-amber-500/15 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-zinc-300"
+                      >
+                        <button onClick={() => openFile(fp)} className="hover:text-cyan-300" title={fp}>
+                          {baseName(fp)}
+                          {ch.created ? " (new)" : ""}
+                        </button>
+                        <button
+                          onClick={() => revertOnePending(fp)}
+                          className="text-zinc-600 hover:text-amber-300"
+                          title="Revert this file"
+                        >
+                          <RotateCcw className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* applied-changes strip: auto-apply stays on, this is the undo */}
               {Object.keys(agentChanges).length > 0 && (
