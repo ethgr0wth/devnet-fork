@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { mountAios, unmountAios } from './aios/AiosShell';
+import { pickLandingEcosystem, ACTIVE_ECOSYSTEM_KEY } from './ecosystem-landing';
 
 marked.setOptions({
   breaks: true,
@@ -3690,7 +3691,14 @@ class DevNetwork {
     // fires the single heaviest upstream call (workspaces?limit=100). Defer
     // it well past first paint so the desktop and its light briefing render
     // first and never queue behind it upstream. (Governed server-side too.)
-    setTimeout(() => this.bridgeSync(), 4000);
+    // When the pass changed anything, refresh the ecosystems so the bridged
+    // twin lands in the switcher (and the landing pick can upgrade off the
+    // DevOne fallback) without a reload.
+    setTimeout(() => {
+      void this.bridgeSync().then((changed) => {
+        if (changed) void this.loadUserEcosystems();
+      });
+    }, 4000);
     void mountAios(this.container, {
       displayName: this.appState.user?.displayName || "there",
       initialApp,
@@ -8380,8 +8388,21 @@ ws.onmessage = (event) => {
       headers: { "X-Auth-Hash": this.appState.hash || "" }
     });
     this.userEcosystems = res.ok ? await res.json() : [];
-    if (this.userEcosystems.length > 0 && !this.activeEcosystem) {
-      this.activeEcosystem = this.userEcosystems[0];
+    let persisted: string | null = null;
+    try { persisted = localStorage.getItem(ACTIVE_ECOSYSTEM_KEY); } catch { /* private mode */ }
+    if (this.userEcosystems.length > 0) {
+      if (!this.activeEcosystem) {
+        // Deterministic landing: persisted choice → freshest aias_v1 twin →
+        // first. Never the unordered-SMEMBERS lottery that landed on DevOne.
+        this.activeEcosystem = pickLandingEcosystem(this.userEcosystems, persisted);
+      } else if (!persisted && this.activeEcosystem.origin !== "aias_v1") {
+        // Late bridge sync: the twin appeared after login. Upgrade the
+        // default landing — but never override an explicit user choice.
+        const pick = pickLandingEcosystem(this.userEcosystems, null);
+        if (pick && pick.origin === "aias_v1" && pick.id !== this.activeEcosystem.id) {
+          this.activeEcosystem = pick;
+        }
+      }
     }
     if (this.activeEcosystem) {
       this.applyEcosystemColors(this.activeEcosystem);
@@ -8438,6 +8459,8 @@ ws.onmessage = (event) => {
 
   private switchEcosystem(eco: any): void {
     this.activeEcosystem = eco;
+    // The switcher is an explicit choice — persist it so landings honor it.
+    try { localStorage.setItem(ACTIVE_ECOSYSTEM_KEY, String(eco?.id || "")); } catch { /* private mode */ }
     this.applyEcosystemColors(eco);
     this.renderEcosystemSwitcher();
     this.updateAdminNavVisibility();
