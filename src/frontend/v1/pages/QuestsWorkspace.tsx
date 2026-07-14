@@ -55,6 +55,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { apiFetch } from "@/lib/queryClient";
 import { buildShellRunCode, parseShellRunResult, type ShellResult } from "@/lib/runtimeSession";
+import { registerPortalTarget, isPortalBarMounted, subscribePortalBus } from "../../aios/portalBus";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 
@@ -580,6 +581,27 @@ export default function QuestsWorkspace() {
   const sessionMessageIds = useRef<Set<string>>(new Set());
 
   const pendingPatchCount = gexModifiedFiles.filter(f => !gexPatchAccepted.has(f)).length;
+
+  // ── single-prompt bus: KeyStone becomes a portal target ──────────────────
+  // The portal bar is THE prompt (Mark). QW keeps its mode/model/read-write
+  // chips but surrenders its text input to the bar when a bar is mounted.
+  const [portalDriven, setPortalDriven] = useState(isPortalBarMounted());
+  const sendRef = useRef<(t?: string) => void>(() => {});
+  useEffect(() => { sendRef.current = sendMessage; });
+  useEffect(() => subscribePortalBus(() => setPortalDriven(isPortalBarMounted())), []);
+  useEffect(() => {
+    if (isMobile) return; // mobile keeps its own composer
+    return registerPortalTarget({
+      appId: "keystone",
+      label: environment?.name ? `KeyStone · ${environment.name}` : "KeyStone",
+      placeholder: readOnlyMode
+        ? "Ask KeyStone about the code…"
+        : editorMode === "focus"
+          ? "Ask KeyStone about docs & architecture…"
+          : "Tell KeyStone what to build…",
+      submit: (t) => sendRef.current?.(t),
+    });
+  }, [environment?.name, editorMode, readOnlyMode, isMobile]);
 
   const hasPendingReview = useMemo(() => {
     const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
@@ -1407,8 +1429,8 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
     }
   };
 
-  const sendMessage = async () => {
-    const currentInput = textareaRef.current?.value?.trim() || chatInput.trim();
+  const sendMessage = async (textArg?: string) => {
+    const currentInput = (textArg ?? (textareaRef.current?.value || chatInput)).trim();
     if (!currentInput || isSendingMessage) return;
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -3359,6 +3381,17 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             {isResettingContext ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </Button>
         </div>
+        {portalDriven ? (
+          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground" data-testid="qw-portal-hint">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="flex-1">Prompt from the portal bar — it drives this KeyStone chat.</span>
+            {isSendingMessage && (
+              <button type="button" onClick={stopStream} className="qw-stop-btn" title="Stop generating" data-testid="button-stop-stream">
+                <Square className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        ) : (
         <div className="flex gap-2">
           <Textarea
             ref={textareaRef}
@@ -3388,7 +3421,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
           ) : (
             <button
               type="button"
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               disabled={hasPendingReview}
               className="qw-send"
               title={hasPendingReview ? "Review pending changes before sending" : undefined}
@@ -3398,6 +3431,7 @@ console.log(\`Sum: \${nums.reduce((a,b) => a+b, 0)}\`);`;
             </button>
           )}
         </div>
+        )}
         </div>
       </div>
     </div>

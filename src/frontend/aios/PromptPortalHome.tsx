@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bot, Boxes, Check, Code, Cpu, LayoutGrid, MessageSquare, Mic, Plus, Search,
-  Send, ShieldCheck, User, Users,
+  Bot, Boxes, Check, Code, Cpu, EyeOff, GripHorizontal, LayoutGrid,
+  MessageSquare, Mic, Plus, Search, Send, ShieldCheck, User, Users,
 } from "lucide-react";
 import { aias } from "../aias";
 import { toast } from "sonner";
@@ -13,6 +13,18 @@ import {
   isPlaygroundProvider,
   type PortalModelSelection,
 } from "@/lib/portalSession";
+import {
+  getPortalTarget,
+  setPortalBarMounted,
+  subscribePortalBus,
+  type PortalTarget,
+} from "./portalBus";
+import {
+  clampPosition,
+  loadPortalPos,
+  savePortalPos,
+  type Point,
+} from "./portal-drag";
 
 export interface PortalApp {
   id: string;
@@ -111,18 +123,67 @@ export function PromptPortalHome({
   };
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // single-prompt bus: the focused app registers a target; the bar routes to
+  // it instead of the portal's own playground chat.
+  const [target, setTarget] = useState<PortalTarget | null>(() => getPortalTarget());
+  useEffect(() => {
+    setPortalBarMounted(true);
+    const unsub = subscribePortalBus(() => setTarget(getPortalTarget()));
+    return () => { setPortalBarMounted(false); unsub(); };
+  }, []);
+
+  // hide / resurface (⌘K); draggable position (persisted, clamped)
+  const [hidden, setHidden] = useState(false);
+  const [pos, setPos] = useState<Point | null>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+  const lastPosRef = useRef<Point | null>(null);
+  useEffect(() => { setPos(loadPortalPos()); }, []);
+
+  const focusInputSoon = () => setTimeout(() => inputRef.current?.focus(), 0);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") || (event.key === "/" && !typing)) {
+      const el = event.target as HTMLElement | null;
+      const typing = el?.tagName === "INPUT" || el?.tagName === "TEXTAREA" || el?.isContentEditable;
+      // ⌘K / Ctrl-K toggles the whole bar (hide ⟷ resurface); resurface focuses.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setHidden((h) => { const next = !h; if (!next) focusInputSoon(); return next; });
+        return;
+      }
+      // "/" focuses the bar when it's visible and you're not already typing.
+      if (event.key === "/" && !typing && !hidden) {
         event.preventDefault();
         inputRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [hidden]);
+
+  const onDragStart = (e: React.PointerEvent) => {
+    const rect = barRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onDragMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || !barRef.current) return;
+    const size = { width: barRef.current.offsetWidth, height: barRef.current.offsetHeight };
+    const next = clampPosition(
+      { x: e.clientX - d.dx, y: e.clientY - d.dy },
+      size,
+      { width: window.innerWidth, height: window.innerHeight }
+    );
+    lastPosRef.current = next;
+    setPos(next);
+  };
+  const onDragEnd = () => {
+    if (dragRef.current && lastPosRef.current) savePortalPos(lastPosRef.current);
+    dragRef.current = null;
+  };
 
   const ensureSession = async (): Promise<string> => {
     const model = effectiveSelection.model;
@@ -238,6 +299,10 @@ export function PromptPortalHome({
     const value = prompt.trim();
     if (!value || sending) return;
     setPrompt("");
+    // Single prompt: when an app owns the bar, its text goes straight to
+    // that app (KeyStone chat, etc.) — not the portal's own chat/routing.
+    const tgt = getPortalTarget();
+    if (tgt) { await tgt.submit(value); return; }
     if (!routePrompt(value)) await sendChat(value);
   };
 
@@ -308,21 +373,52 @@ export function PromptPortalHome({
         </motion.section>
       </AnimatePresence>
 
-      <section className={`absolute left-1/2 z-30 w-[min(860px,calc(100%_-_24px))] -translate-x-1/2 transition-all duration-500 ${depth === "home" ? "top-[46%] -translate-y-1" : "bottom-4"}`}>
-        <div className="mb-1.5 flex px-1 font-mono text-[8px] font-semibold uppercase tracking-wider text-slate-500"><strong className="text-[#123054]">{depth === "home" ? "DEPTH 00 · CHAT" : depth === "chat" ? "DEPTH 01 · PRIVATE CHAT" : "DEPTH 01 · CAPABILITIES"}</strong><span className="ml-auto text-teal-700">PORTAL READY</span></div>
+      {hidden ? (
+        <button
+          onClick={() => { setHidden(false); focusInputSoon(); }}
+          className="fixed bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-300 bg-white/95 px-3 py-1.5 font-mono text-[10px] text-slate-600 shadow-lg hover:border-teal-300"
+          data-testid="portal-summon"
+        >
+          <Cpu className="h-3 w-3 text-teal-600" /> {target ? target.label : "Portal"} · ⌘K
+        </button>
+      ) : (
+      <section
+        ref={barRef}
+        style={pos ? { left: pos.x, top: pos.y } : undefined}
+        className={`z-30 w-[min(860px,calc(100%_-_24px))] ${pos ? "fixed" : `absolute left-1/2 -translate-x-1/2 transition-all duration-500 ${depth === "home" && !target ? "top-[46%] -translate-y-1" : "bottom-4"}`}`}
+      >
+        <div className="mb-1.5 flex items-center gap-2 px-1 font-mono text-[8px] font-semibold uppercase tracking-wider text-slate-500">
+          <button
+            onPointerDown={onDragStart}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            title="Drag the portal"
+            data-testid="portal-drag"
+            className="flex cursor-grab items-center text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+          >
+            <GripHorizontal className="h-3.5 w-3.5" />
+          </button>
+          <strong className="text-[#123054]">{target ? `→ ${target.label.toUpperCase()}` : depth === "home" ? "DEPTH 00 · CHAT" : depth === "chat" ? "DEPTH 01 · PRIVATE CHAT" : "DEPTH 01 · CAPABILITIES"}</strong>
+          <span className="ml-auto flex items-center gap-2 text-teal-700">
+            {target ? "ROUTING" : "PORTAL READY"}
+            <button onClick={() => setHidden(true)} title="Hide (⌘K)" data-testid="portal-hide" className="text-slate-400 hover:text-slate-600"><EyeOff className="h-3.5 w-3.5" /></button>
+          </span>
+        </div>
         <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white/95 shadow-[0_24px_70px_rgba(10,29,53,.16)] backdrop-blur-xl">
-          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[8px] text-slate-500"><span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-teal-700"><ShieldCheck className="h-3 w-3" /> VERIFIED</span><span className="rounded-full border border-slate-200 bg-white px-2 py-1">AiAS Portal</span><span className="rounded-full border border-slate-200 bg-white px-2 py-1">federated session</span><span className="rounded-full border border-slate-200 bg-white px-2 py-1">BYOK · policy active</span></div>
-          <div className="grid min-h-[66px] grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-end gap-1.5 p-2.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[8px] text-slate-500"><span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-teal-700"><ShieldCheck className="h-3 w-3" /> VERIFIED</span>{target ? (<span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-indigo-700">driving {target.label}</span>) : (<span className="rounded-full border border-slate-200 bg-white px-2 py-1">AiAS Portal</span>)}<span className="rounded-full border border-slate-200 bg-white px-2 py-1">federated session</span><span className="rounded-full border border-slate-200 bg-white px-2 py-1">BYOK · policy active</span></div>
+          <div className={`grid min-h-[66px] items-end gap-1.5 p-2.5 ${target ? "grid-cols-[auto_minmax(0,1fr)_auto_auto]" : "grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]"}`}>
             <button onClick={() => setDoorsOpen((open) => !open)} className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-slate-100 text-[#123054] hover:bg-blue-50"><Plus className="h-4 w-4" /></button>
-            <textarea ref={inputRef} value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }} rows={1} placeholder={depth === "home" ? "Ask, bring people in, open KeyStone, run something…" : "Continue here or open another capability…"} className="max-h-28 min-h-[40px] resize-none bg-transparent px-1 py-2 text-[14px] text-[#061426] outline-none placeholder:text-slate-400" />
+            <textarea ref={inputRef} value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }} rows={1} placeholder={target?.placeholder || (depth === "home" ? "Ask, bring people in, open KeyStone, run something…" : "Continue here or open another capability…")} className="max-h-28 min-h-[40px] resize-none bg-transparent px-1 py-2 text-[14px] text-[#061426] outline-none placeholder:text-slate-400" />
+            {!target && (
             <button onClick={() => setModelPickerOpen((v) => !v)} title={`Model: ${effectiveSelection.model} — the portal session follows this`} data-testid="portal-model-chip" className={`flex h-10 max-w-[150px] items-center gap-1.5 rounded-xl border px-2.5 font-mono text-[10px] ${modelPickerOpen ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600 hover:border-teal-300"}`}>
               <Cpu className="h-3.5 w-3.5 shrink-0 text-teal-600" />
               <span className="truncate">{effectiveSelection.model}</span>
             </button>
+            )}
             <button title="Voice control" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><Mic className="h-4 w-4" /></button>
             <button onClick={() => void submit()} disabled={!prompt.trim() || sending} className="grid h-10 w-10 place-items-center rounded-xl bg-[#0a1d35] text-white shadow disabled:opacity-40"><Send className="h-4 w-4" /></button>
           </div>
-          {modelPickerOpen && (
+          {!target && modelPickerOpen && (
             <div className="max-h-72 overflow-y-auto border-t border-slate-200 bg-white p-2" data-testid="portal-model-picker">
               <div className="px-2 pb-1 font-mono text-[8px] font-semibold uppercase tracking-wider text-slate-400">
                 MODEL — THE PORTAL SESSION FOLLOWS YOUR PICK
@@ -351,15 +447,18 @@ export function PromptPortalHome({
               )}
             </div>
           )}
+          {!target && (
           <div className={`grid grid-cols-4 overflow-hidden border-slate-200 bg-slate-50 transition-all ${doorsOpen ? "max-h-16 border-t opacity-100" : "max-h-0 opacity-0"}`}>
             <Door label="Group chat" icon={MessageSquare} onClick={() => onClassic("messages")} />
             <Door label="KeyStone" icon={Code} onClick={() => onOpen("keystone")} />
             <Door label="All apps" icon={LayoutGrid} onClick={() => setDepth("directory")} />
             <Door label="Search" icon={Search} onClick={() => onOpen("tools")} />
           </div>
+          )}
         </div>
-        <div className="mt-1.5 text-center font-mono text-[8px] text-slate-400">/ or ⌘K focuses the portal · natural language changes depth</div>
+        <div className="mt-1.5 text-center font-mono text-[8px] text-slate-400">{target ? `prompt routes to ${target.label} · ⌘K hides · drag the ⋯ handle to move` : "/ or ⌘K hides · drag the ⋯ handle · natural language changes depth"}</div>
       </section>
+      )}
     </div>
   );
 }
