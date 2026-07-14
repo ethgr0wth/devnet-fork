@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/queryClient";
 import { RuntimeSession } from "@/lib/runtimeSession";
+import { parseSurgicalEdits, stripPartialSentinels } from "@/lib/surgicalEdit";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import QuestsWorkspace from "./QuestsWorkspace";
@@ -192,6 +193,16 @@ export default function KeystoneLiteWorkspace() {
   const [pkgEco, setPkgEco] = useState<"pip" | "npm">("pip");
   const [pkgName, setPkgName] = useState("");
   const [pkgInstalling, setPkgInstalling] = useState(false);
+  // app process (lite parity: keystone-api run/stop/logs — dev servers live
+  // here with a preview URL; the shell is for one-shot commands)
+  const [appCmd, setAppCmd] = useState("");
+  const [appRunning, setAppRunning] = useState(false);
+  const [appBusy, setAppBusy] = useState(false);
+  const [appInfo, setAppInfo] = useState<{
+    port?: number | null;
+    preview_url?: string;
+    command?: string;
+  } | null>(null);
 
   // ── data loading ───────────────────────────────────────────────────────────
 
@@ -782,6 +793,57 @@ export default function KeystoneLiteWorkspace() {
     }
   };
 
+  // ── app process (run / stop / logs — quests.py allowlisted app runner) ────
+
+  const startApp = async () => {
+    const cmd = appCmd.trim();
+    if (!cmd || appBusy || appRunning) return;
+    setAppBusy(true);
+    try {
+      const r = await apiFetch(`/api/keystone/environments/${envId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmd }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "App start failed");
+      setAppRunning(true);
+      setAppInfo(d);
+      toast.success(`App started${d.port ? ` on :${d.port}` : ""}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const stopApp = async () => {
+    if (appBusy) return;
+    setAppBusy(true);
+    try {
+      await apiFetch(`/api/keystone/environments/${envId}/stop`, { method: "POST" });
+      setAppRunning(false);
+      setAppInfo(null);
+      toast.success("App stopped");
+    } catch {
+      toast.error("Stop failed");
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const fetchAppLogs = async () => {
+    try {
+      const r = await apiFetch(
+        `/api/keystone/environments/${envId}/logs?lines=120`
+      ).then((r) => r.json());
+      const logs = Array.isArray(r.logs) ? r.logs.join("\n") : String(r.logs ?? "");
+      setTermOutput({ stdout: logs || "(no app logs yet)" });
+    } catch {
+      toast.error("Could not fetch app logs");
+    }
+  };
+
   // ── file tree rendering ────────────────────────────────────────────────────
 
   const matchesFilter = (node: FileNode): boolean => {
@@ -1204,6 +1266,61 @@ export default function KeystoneLiteWorkspace() {
                       </button>
                     </div>
                   </div>
+                  <div className="flex h-7 shrink-0 items-center gap-2 border-b border-white/5 px-2.5">
+                    <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                      App
+                    </span>
+                    <input
+                      value={appCmd}
+                      onChange={(e) => setAppCmd(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !appRunning && startApp()}
+                      placeholder="npm run dev"
+                      disabled={appRunning}
+                      className="max-w-[280px] flex-1 bg-transparent font-mono text-[10.5px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none disabled:text-zinc-500"
+                      data-testid="ksl-app-cmd"
+                    />
+                    {!appRunning ? (
+                      <button
+                        onClick={startApp}
+                        disabled={appBusy || !appCmd.trim()}
+                        className="flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/25 disabled:bg-white/5 disabled:text-zinc-600"
+                        data-testid="ksl-app-start"
+                      >
+                        {appBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Play className="h-2.5 w-2.5" />}
+                        start
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopApp}
+                        disabled={appBusy}
+                        className="flex items-center gap-1 rounded bg-red-500/15 px-2 py-0.5 text-[10px] text-red-300 hover:bg-red-500/25"
+                        data-testid="ksl-app-stop"
+                      >
+                        <Square className="h-2.5 w-2.5" /> stop
+                      </button>
+                    )}
+                    <button
+                      onClick={fetchAppLogs}
+                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+                      data-testid="ksl-app-logs"
+                    >
+                      logs
+                    </button>
+                    {appRunning && appInfo?.port != null && (
+                      <span className="font-mono text-[10px] text-emerald-400/80">:{appInfo.port}</span>
+                    )}
+                    {appRunning && appInfo?.preview_url && (
+                      <a
+                        href={appInfo.preview_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20"
+                        data-testid="ksl-app-preview"
+                      >
+                        preview ↗
+                      </a>
+                    )}
+                  </div>
                   <div className="grid min-h-0 flex-1 grid-cols-2">
                     <textarea
                       value={termCode}
@@ -1248,11 +1365,13 @@ export default function KeystoneLiteWorkspace() {
                               {termOutput.stderr}
                             </pre>
                           )}
-                          <div className="mt-1.5 text-[10px] text-zinc-600">
-                            exit {termOutput.exit_code ?? "?"}
-                            {termOutput.duration_ms != null &&
-                              ` · ${termOutput.duration_ms}ms`}
-                          </div>
+                          {termOutput.exit_code != null && (
+                            <div className="mt-1.5 text-[10px] text-zinc-600">
+                              exit {termOutput.exit_code}
+                              {termOutput.duration_ms != null &&
+                                ` · ${termOutput.duration_ms}ms`}
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -1376,12 +1495,86 @@ export default function KeystoneLiteWorkspace() {
                           }`}
                         >
                           {m.content ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={mdComponents as any}
-                            >
-                              {m.content}
-                            </ReactMarkdown>
+                            (() => {
+                              if (m.role !== "assistant") {
+                                return (
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={mdComponents as any}
+                                  >
+                                    {m.content}
+                                  </ReactMarkdown>
+                                );
+                              }
+                              // lite parity (ChatPanel.renderMessageContent):
+                              // sentinel blocks never render raw — they become
+                              // the Surgical Edits card; prose renders clean.
+                              const { edits, explanation } = parseSurgicalEdits(m.content);
+                              const clean = stripPartialSentinels(explanation);
+                              const pending = (m.filesTouched || []).some(
+                                (f) => f in pendingReview
+                              );
+                              const applied = chatMode === "keystone" || !pending;
+                              return (
+                                <>
+                                  {edits.length > 0 && (
+                                    <div
+                                      className={`mb-2 rounded border px-2 py-1.5 ${
+                                        applied
+                                          ? "border-emerald-500/25 bg-emerald-500/[0.06]"
+                                          : "border-amber-500/25 bg-amber-500/[0.06]"
+                                      }`}
+                                      data-testid="ksl-edits-card"
+                                    >
+                                      <div
+                                        className={`mb-1 font-mono text-[9.5px] uppercase tracking-[0.15em] ${
+                                          applied ? "text-emerald-300" : "text-amber-300"
+                                        }`}
+                                      >
+                                        {applied
+                                          ? "Applied"
+                                          : "Surgical edits — review below"}{" "}
+                                        ({edits.length})
+                                      </div>
+                                      {edits.map((ed, i) => (
+                                        <div
+                                          key={`${ed.file}-${i}`}
+                                          className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-400"
+                                        >
+                                          <FileCode className="h-2.5 w-2.5 shrink-0 text-zinc-500" />
+                                          <button
+                                            onClick={() => openFile(ed.file)}
+                                            className="truncate hover:text-cyan-300"
+                                            title={ed.file}
+                                          >
+                                            {ed.file}
+                                          </button>
+                                          <span className="shrink-0 text-zinc-600">
+                                            {ed.type === "replace"
+                                              ? `replace ${ed.startLine}–${ed.endLine ?? ed.startLine}`
+                                              : ed.type === "insert"
+                                                ? `insert @${ed.startLine}`
+                                                : ed.type === "delete"
+                                                  ? `delete ${ed.startLine}–${ed.endLine ?? ed.startLine}`
+                                                  : ed.type === "create"
+                                                    ? "new file"
+                                                    : "full write"}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {(clean || edits.length === 0) && (
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={mdComponents as any}
+                                    >
+                                      {clean || m.content}
+                                    </ReactMarkdown>
+                                  )}
+                                </>
+                              );
+                            })()
                           ) : (
                             m.role === "assistant" &&
                             sending && (
