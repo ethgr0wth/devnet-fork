@@ -280,18 +280,24 @@ def main():
         import threading
 
         MOCK_TOKEN = "aias-mock-session-token-abc123"
+        # Real AiAS shape (per api.aiassist.net/openapi.json):
+        #  - /api/user/me does NOT carry active_environment_id
+        #  - /api/environments/ returns EnvironmentListResponse, which DOES
+        #  - /api/user/workspaces previews do NOT carry environment_id
+        # Modeling it faithfully here is the regression guard for the
+        # active_env-from-me bug that misfiled every twin under DevOne.
         V1_USER = {"id": "v1-user-mark", "email": "mark@interchained.org",
-                   "display_name": "Mark", "role": "super_admin", "plan": "pro",
-                   "active_environment_id": "env-prod-1"}
+                   "display_name": "Mark", "role": "super_admin", "plan": "pro"}
         V1_ENVS = {"environments": [
             {"id": "env-prod-1", "name": "Production"},
-            {"id": "env-stage-2", "name": "Staging"}]}
+            {"id": "env-stage-2", "name": "Staging"}],
+            "active_environment_id": "env-prod-1",
+            "max_environments": 5, "used_environments": 2,
+            "is_license_admin": True}
         V1_WORKSPACES = {"workspaces": [
             {"id": "ws-acme-1", "title": "Acme Corp — onboarding",
-             "environment_id": "env-prod-1",
              "needs_human_attention": True, "message_count": 12},
             {"id": "ws-beta-2", "title": "Beta support",
-             "environment_id": "env-prod-1",
              "needs_human_attention": False, "message_count": 3}]}
 
         class MockAias(BaseHTTPRequestHandler):
@@ -443,8 +449,7 @@ def main():
                 {"id": "ws-native-x", "name": "native-owned",
                  "status": "approved"}))
             mock.ws_payload = {"workspaces": [  # type: ignore
-                {"id": "ws-native-x", "title": "Impostor",
-                 "environment_id": "env-prod-1"}]}
+                {"id": "ws-native-x", "title": "Impostor"}]}
             s5, b5 = req(fbase, "POST", "/api/bridge/sync-workspaces", {}, FH)
             ok("I9 never-repurpose guard (conflict counted, doc untouched)",
                b5.get("conflicts", 0) >= 1, str(b5)[:120])
