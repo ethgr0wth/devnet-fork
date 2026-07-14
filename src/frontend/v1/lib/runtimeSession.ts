@@ -24,6 +24,14 @@ export interface RunCodeResult {
   [k: string]: unknown;
 }
 
+export interface ShellResult extends RunCodeResult {
+  /** Workspace-relative cwd AFTER the command ran ('.' = workspace root). */
+  cwd: string;
+}
+
+/** Inner shell timeout; the run_code cap rides 10s above it (lite parity). */
+const SHELL_TIMEOUT_SECONDS = 55;
+
 export class RuntimeHttpError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -86,10 +94,16 @@ export class RuntimeSession {
     }
 
     if (!sessionId) {
+      // Raise the per-execution cap above the shell wrapper's inner timeout
+      // so long builds/installs hit the friendly exit-124 path instead of a
+      // 500 (keystone-lite runtime-api.ts, verbatim rationale).
       const createRes = await apiFetch("/api/runtime/sessions", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ environment_id: this.envId }),
+        body: JSON.stringify({
+          environment_id: this.envId,
+          policy: { max_execution_seconds: SHELL_TIMEOUT_SECONDS + 10 },
+        }),
       });
       if (!createRes.ok) throw new RuntimeHttpError(createRes.status, await readDetail(createRes));
       sessionId = (await createRes.json()).session_id as string;
@@ -164,25 +178,116 @@ export class RuntimeSession {
     }
   }
 
+  private async execRunCode(
+    sessionId: string,
+    language: "python" | "node",
+    code: string,
+    timeoutSeconds?: number
+  ): Promise<RunCodeResult> {
+    const res = await apiFetch("/api/runtime/run_code", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        session_id: sessionId,
+        language,
+        code,
+        environment_id: this.envId,
+        ...(timeoutSeconds ? { timeout_seconds: timeoutSeconds } : {}),
+      }),
+    });
+    if (!res.ok) throw new RuntimeHttpError(res.status, await readDetail(res));
+    return (await res.json()) as RunCodeResult;
+  }
+
   runCode(
     language: "python" | "node",
     code: string,
     timeoutSeconds?: number
   ): Promise<RunCodeResult> {
+    return this.withSession((sessionId) =>
+      this.execRunCode(sessionId, language, code, timeoutSeconds)
+    );
+  }
+
+  /**
+   * One interactive shell line inside the remote workspace — port of
+   * keystone-lite's runShellCommand + runRemoteTerminalCommand:
+   *
+   *   - python wrapper: cwd containment (realpath under the workspace
+   *     root), process-group kill + exit 124 on timeout
+   *   - a per-call cwd marker captures the shell's final directory, so
+   *     `cd src` persists to the next line
+   *   - the runtime's absolute workspace root is scrubbed from output
+   *     (shown as /workspace), never leaking host paths
+   */
+  runShell(command: string, workingDirectory = "."): Promise<ShellResult> {
     return this.withSession(async (sessionId) => {
-      const res = await apiFetch("/api/runtime/run_code", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({
-          session_id: sessionId,
-          language,
-          code,
-          environment_id: this.envId,
-          ...(timeoutSeconds ? { timeout_seconds: timeoutSeconds } : {}),
-        }),
-      });
-      if (!res.ok) throw new RuntimeHttpError(res.status, await readDetail(res));
-      return (await res.json()) as RunCodeResult;
+      const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, "")}__`;
+      const shellCommand = [
+        command,
+        "__keystone_exit=$?",
+        `printf '\\n${marker}%s\\n' "$PWD"`,
+        'exit "$__keystone_exit"',
+      ].join("\n");
+      const code = [
+        "import os, signal, subprocess, sys",
+        "root = os.path.realpath(os.getcwd())",
+        `requested = ${JSON.stringify(workingDirectory)}`,
+        "workdir = os.path.realpath(os.path.join(root, requested))",
+        "if os.path.commonpath([root, workdir]) != root or not os.path.isdir(workdir):",
+        "    sys.stderr.write('Invalid remote working directory')",
+        "    sys.exit(2)",
+        `p = subprocess.Popen(${JSON.stringify(shellCommand)}, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir, start_new_session=True)`,
+        "try:",
+        `    out, err = p.communicate(timeout=${SHELL_TIMEOUT_SECONDS})`,
+        "except subprocess.TimeoutExpired:",
+        "    os.killpg(p.pid, signal.SIGKILL)",
+        "    out, err = p.communicate()",
+        "    sys.stdout.write(out or '')",
+        "    sys.stderr.write(err or '')",
+        `    sys.stderr.write('\\n[command timed out after ${SHELL_TIMEOUT_SECONDS}s]')`,
+        "    sys.exit(124)",
+        "sys.stdout.write(out or '')",
+        "sys.stderr.write(err or '')",
+        "sys.exit(p.returncode or 0)",
+      ].join("\n");
+
+      const result = await this.execRunCode(
+        sessionId,
+        "python",
+        code,
+        SHELL_TIMEOUT_SECONDS + 10
+      );
+
+      let stdout = result.stdout || "";
+      let stderr = result.stderr || "";
+      let cwd = workingDirectory;
+      const markerIndex = stdout.lastIndexOf(marker);
+      if (markerIndex >= 0) {
+        const beforeMarker = stdout.slice(0, markerIndex).replace(/\n$/, "");
+        const absoluteCwd = stdout
+          .slice(markerIndex + marker.length)
+          .split(/\r?\n/, 1)[0]
+          .trim();
+        stdout = beforeMarker;
+
+        const workspaceToken = `/workspaces/${sessionId}`;
+        const workspaceIndex = absoluteCwd.indexOf(workspaceToken);
+        if (workspaceIndex >= 0) {
+          const runtimeWorkspaceRoot = absoluteCwd.slice(
+            0,
+            workspaceIndex + workspaceToken.length
+          );
+          stdout = stdout.split(runtimeWorkspaceRoot).join("/workspace");
+          stderr = stderr.split(runtimeWorkspaceRoot).join("/workspace");
+          const relative = absoluteCwd
+            .slice(workspaceIndex + workspaceToken.length)
+            .replace(/^\/+/, "");
+          cwd = relative || ".";
+        }
+      }
+
+      return { ...result, stdout, stderr, cwd };
     });
   }
 

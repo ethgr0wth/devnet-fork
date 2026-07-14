@@ -15,9 +15,11 @@
  *   └──────────────────────────────────────────────────────────────┘
  *
  * Design system: bg #0a0a0f, cyan-400 accents, border-white/5, mono type.
- * Behavior: agent file changes are AUTO-APPROVED — no review gate. Changes
- * stream in, are applied by the backend, and this UI simply refreshes and
- * opens the touched files.
+ * Behavior: chat modes follow Keystone-Lite (_Gex · Focus · Keystone).
+ * Keystone mode auto-applies. _Gex/Focus hold streamed changes in a review
+ * gate — Keep accepts, Revert restores the exact pre-change snapshots the
+ * backend streams. Edits land in the env workspace immediately either way;
+ * the gate governs ACCEPTANCE, riding the snapshot/rollback rails.
  *
  * Mobile (<768px) renders the original QuestsWorkspace untouched.
  */
@@ -48,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/queryClient";
 import { RuntimeSession } from "@/lib/runtimeSession";
+import { parseSurgicalEdits, stripPartialSentinels } from "@/lib/surgicalEdit";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import QuestsWorkspace from "./QuestsWorkspace";
@@ -75,6 +78,7 @@ interface TermResult {
   stderr?: string;
   exit_code?: number;
   duration_ms?: number;
+  cwd?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -145,6 +149,13 @@ export default function KeystoneLiteWorkspace() {
   const [chatInput, setChatInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  // chat mode — Keystone-Lite parity: _Gex reviews surgical edits before
+  // acceptance, Focus is research/docs only, Keystone auto-applies.
+  const [chatMode, setChatMode] = useState<"gex" | "focus" | "keystone">("gex");
+  // review gate: files awaiting Keep/Revert (path → pre-change snapshot)
+  const [pendingReview, setPendingReview] = useState<
+    Record<string, { snap: string; created: boolean }>
+  >({});
   // rollback: auto-apply stays on, but every applied change keeps a snapshot
   // (path → pre-change content; created=true means revert deletes the file)
   const [agentChanges, setAgentChanges] = useState<
@@ -173,13 +184,25 @@ export default function KeystoneLiteWorkspace() {
     "connecting" | "ready" | "error"
   >("connecting");
   const runtimeRef = useRef<RuntimeSession | null>(null);
-  const [termLang, setTermLang] = useState<"python" | "node">("python");
+  const [termLang, setTermLang] = useState<"shell" | "python" | "node">("shell");
+  // shell mode: workspace-relative cwd persists between lines (lite parity)
+  const [termCwd, setTermCwd] = useState(".");
   const [termCode, setTermCode] = useState("");
   const [termOutput, setTermOutput] = useState<TermResult | null>(null);
   const [termRunning, setTermRunning] = useState(false);
   const [pkgEco, setPkgEco] = useState<"pip" | "npm">("pip");
   const [pkgName, setPkgName] = useState("");
   const [pkgInstalling, setPkgInstalling] = useState(false);
+  // app process (lite parity: keystone-api run/stop/logs — dev servers live
+  // here with a preview URL; the shell is for one-shot commands)
+  const [appCmd, setAppCmd] = useState("");
+  const [appRunning, setAppRunning] = useState(false);
+  const [appBusy, setAppBusy] = useState(false);
+  const [appInfo, setAppInfo] = useState<{
+    port?: number | null;
+    preview_url?: string;
+    command?: string;
+  } | null>(null);
 
   // ── data loading ───────────────────────────────────────────────────────────
 
@@ -234,6 +257,7 @@ export default function KeystoneLiteWorkspace() {
     // environment, workspace sync is awaited before ready, and every
     // execution self-heals one 409 (destroy → recreate → sync → retry).
     runtimeRef.current?.dispose();
+    setTermCwd(".");
     const rs = new RuntimeSession(envId!, (status, sessionId) => {
       setRuntimeStatus(status);
       setRuntimeSessionId(sessionId);
@@ -459,6 +483,35 @@ export default function KeystoneLiteWorkspace() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
+  // ── review gate (_Gex/Focus): nothing is accepted until Keep ──────────────
+
+  const keepReviewed = async () => {
+    const files = Object.keys(pendingReview);
+    if (files.length === 0) return;
+    setAgentChanges((prev) => ({ ...pendingReview, ...prev }));
+    setPendingReview({});
+    await absorbAgentChanges(files);
+  };
+
+  const revertReviewed = async () => {
+    for (const [fp, entry] of Object.entries(pendingReview)) {
+      await revertFile(fp, entry);
+    }
+    setPendingReview({});
+    toast.success("Pending edits reverted — workspace restored");
+  };
+
+  const revertOnePending = async (fp: string) => {
+    const entry = pendingReview[fp];
+    if (!entry) return;
+    await revertFile(fp, entry);
+    setPendingReview((prev) => {
+      const next = { ...prev };
+      delete next[fp];
+      return next;
+    });
+  };
+
   const sendMessage = async () => {
     const text = chatInput.trim();
     if (!text || sending) return;
@@ -487,6 +540,11 @@ export default function KeystoneLiteWorkspace() {
     try {
       const abortCtrl = new AbortController();
       streamAbortRef.current = abortCtrl;
+      // Same token transport as apiFetch — the raw SSE fetch must ride the
+      // federated session exactly like every sibling call in this file.
+      const tok =
+        localStorage.getItem("devnetwork_hash") ||
+        localStorage.getItem("aias_session_token");
       const response = await fetch(
         `/api/keystone/environments/${envId}/chat/stream`,
         {
@@ -494,6 +552,9 @@ export default function KeystoneLiteWorkspace() {
           headers: {
             "Content-Type": "application/json",
             "X-AiAssist-Provider": effectiveProvider,
+            ...(tok && !tok.startsWith("dvs_")
+              ? { "X-Auth-Hash": tok, "X-Session-Token": tok }
+              : {}),
           },
           body: JSON.stringify({
             message: text,
@@ -501,6 +562,9 @@ export default function KeystoneLiteWorkspace() {
               selectedModel && selectedModel !== "auto"
                 ? selectedModel
                 : undefined,
+            // Keystone-Lite mode flags (quests.py ChatRequest)
+            gex_mode: chatMode === "gex" || undefined,
+            focus_mode: chatMode === "focus" || undefined,
           }),
           credentials: "include",
           signal: abortCtrl.signal,
@@ -607,17 +671,18 @@ export default function KeystoneLiteWorkspace() {
               }
               for (const f of data.files_edited || []) touched.add(f);
               const finalTouched = [...touched];
-              // remember how to undo each change (auto-apply stays on)
-              setAgentChanges((prev) => {
-                const next = { ...prev };
-                for (const f of finalTouched) {
-                  if (next[f] === undefined) {
-                    const snap = snapshotsRef.current[f] ?? "";
-                    next[f] = { snap, created: writtenSet.has(f) && !snap };
-                  }
-                }
-                return next;
-              });
+              // remember how to undo each change; in _Gex/Focus the entries
+              // feed the review gate instead of the applied-changes strip
+              const entries: Record<string, { snap: string; created: boolean }> = {};
+              for (const f of finalTouched) {
+                const snap = snapshotsRef.current[f] ?? "";
+                entries[f] = { snap, created: writtenSet.has(f) && !snap };
+              }
+              if (chatMode === "keystone") {
+                setAgentChanges((prev) => ({ ...entries, ...prev }));
+              } else if (finalTouched.length > 0) {
+                setPendingReview((prev) => ({ ...entries, ...prev }));
+              }
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === draftId
@@ -631,8 +696,18 @@ export default function KeystoneLiteWorkspace() {
                     : m
                 )
               );
-              // AUTO-APPROVE: absorb the agent's writes immediately
-              await absorbAgentChanges(finalTouched);
+              if (chatMode === "keystone") {
+                // Keystone mode: agentic auto-apply (lite parity)
+                await absorbAgentChanges(finalTouched);
+              } else if (finalTouched.length > 0) {
+                // _Gex/Focus: hold for review — refresh the tree so results
+                // are inspectable; nothing is accepted until Keep.
+                loadFileTree();
+                toast.info(
+                  `${finalTouched.length} edit${finalTouched.length > 1 ? "s" : ""} awaiting review`,
+                  { duration: 4000 }
+                );
+              }
               break;
             }
             case "error":
@@ -682,7 +757,16 @@ export default function KeystoneLiteWorkspace() {
     setTermRunning(true);
     setTermOutput(null);
     try {
-      setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
+      if (termLang === "shell") {
+        // lite parity: cwd marker rides every line — `cd` persists, runtime
+        // host paths are scrubbed to /workspace before display
+        const r = await rs.runShell(termCode, termCwd);
+        setTermCwd(r.cwd || ".");
+        setTermOutput(r as TermResult);
+        setTermCode("");
+      } else {
+        setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
+      }
     } catch (e) {
       setTermOutput({
         stdout: "",
@@ -706,6 +790,57 @@ export default function KeystoneLiteWorkspace() {
       toast.error("Package install failed");
     } finally {
       setPkgInstalling(false);
+    }
+  };
+
+  // ── app process (run / stop / logs — quests.py allowlisted app runner) ────
+
+  const startApp = async () => {
+    const cmd = appCmd.trim();
+    if (!cmd || appBusy || appRunning) return;
+    setAppBusy(true);
+    try {
+      const r = await apiFetch(`/api/keystone/environments/${envId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmd }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "App start failed");
+      setAppRunning(true);
+      setAppInfo(d);
+      toast.success(`App started${d.port ? ` on :${d.port}` : ""}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const stopApp = async () => {
+    if (appBusy) return;
+    setAppBusy(true);
+    try {
+      await apiFetch(`/api/keystone/environments/${envId}/stop`, { method: "POST" });
+      setAppRunning(false);
+      setAppInfo(null);
+      toast.success("App stopped");
+    } catch {
+      toast.error("Stop failed");
+    } finally {
+      setAppBusy(false);
+    }
+  };
+
+  const fetchAppLogs = async () => {
+    try {
+      const r = await apiFetch(
+        `/api/keystone/environments/${envId}/logs?lines=120`
+      ).then((r) => r.json());
+      const logs = Array.isArray(r.logs) ? r.logs.join("\n") : String(r.logs ?? "");
+      setTermOutput({ stdout: logs || "(no app logs yet)" });
+    } catch {
+      toast.error("Could not fetch app logs");
     }
   };
 
@@ -1061,7 +1196,7 @@ export default function KeystoneLiteWorkspace() {
                       Terminal
                     </span>
                     <div className="ml-2 flex overflow-hidden rounded border border-white/10 text-[10.5px]">
-                      {(["python", "node"] as const).map((l) => (
+                      {(["shell", "python", "node"] as const).map((l) => (
                         <button
                           key={l}
                           onClick={() => setTermLang(l)}
@@ -1076,6 +1211,11 @@ export default function KeystoneLiteWorkspace() {
                         </button>
                       ))}
                     </div>
+                    {termLang === "shell" && (
+                      <span className="font-mono text-[10px] text-emerald-400/70" data-testid="ksl-term-cwd">
+                        ~/workspace{termCwd === "." ? "" : `/${termCwd}`} $
+                      </span>
+                    )}
                     <div className="ml-auto flex items-center gap-1.5">
                       <div className="flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5">
                         <Package className="h-3 w-3 text-zinc-500" />
@@ -1126,14 +1266,77 @@ export default function KeystoneLiteWorkspace() {
                       </button>
                     </div>
                   </div>
+                  <div className="flex h-7 shrink-0 items-center gap-2 border-b border-white/5 px-2.5">
+                    <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                      App
+                    </span>
+                    <input
+                      value={appCmd}
+                      onChange={(e) => setAppCmd(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !appRunning && startApp()}
+                      placeholder="npm run dev"
+                      disabled={appRunning}
+                      className="max-w-[280px] flex-1 bg-transparent font-mono text-[10.5px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none disabled:text-zinc-500"
+                      data-testid="ksl-app-cmd"
+                    />
+                    {!appRunning ? (
+                      <button
+                        onClick={startApp}
+                        disabled={appBusy || !appCmd.trim()}
+                        className="flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/25 disabled:bg-white/5 disabled:text-zinc-600"
+                        data-testid="ksl-app-start"
+                      >
+                        {appBusy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Play className="h-2.5 w-2.5" />}
+                        start
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopApp}
+                        disabled={appBusy}
+                        className="flex items-center gap-1 rounded bg-red-500/15 px-2 py-0.5 text-[10px] text-red-300 hover:bg-red-500/25"
+                        data-testid="ksl-app-stop"
+                      >
+                        <Square className="h-2.5 w-2.5" /> stop
+                      </button>
+                    )}
+                    <button
+                      onClick={fetchAppLogs}
+                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+                      data-testid="ksl-app-logs"
+                    >
+                      logs
+                    </button>
+                    {appRunning && appInfo?.port != null && (
+                      <span className="font-mono text-[10px] text-emerald-400/80">:{appInfo.port}</span>
+                    )}
+                    {appRunning && appInfo?.preview_url && (
+                      <a
+                        href={appInfo.preview_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20"
+                        data-testid="ksl-app-preview"
+                      >
+                        preview ↗
+                      </a>
+                    )}
+                  </div>
                   <div className="grid min-h-0 flex-1 grid-cols-2">
                     <textarea
                       value={termCode}
                       onChange={(e) => setTermCode(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (termLang === "shell" && e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          runCode();
+                        }
+                      }}
                       placeholder={
-                        termLang === "python"
-                          ? '# python code…\nprint("hello")'
-                          : '// node code…\nconsole.log("hello")'
+                        termLang === "shell"
+                          ? "$ shell — cd persists between runs\nls -la"
+                          : termLang === "python"
+                            ? '# python code…\nprint("hello")'
+                            : '// node code…\nconsole.log("hello")'
                       }
                       spellCheck={false}
                       className="h-full resize-none border-r border-white/5 bg-transparent p-2.5 font-mono text-[11.5px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none"
@@ -1162,11 +1365,13 @@ export default function KeystoneLiteWorkspace() {
                               {termOutput.stderr}
                             </pre>
                           )}
-                          <div className="mt-1.5 text-[10px] text-zinc-600">
-                            exit {termOutput.exit_code ?? "?"}
-                            {termOutput.duration_ms != null &&
-                              ` · ${termOutput.duration_ms}ms`}
-                          </div>
+                          {termOutput.exit_code != null && (
+                            <div className="mt-1.5 text-[10px] text-zinc-600">
+                              exit {termOutput.exit_code}
+                              {termOutput.duration_ms != null &&
+                                ` · ${termOutput.duration_ms}ms`}
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -1186,6 +1391,25 @@ export default function KeystoneLiteWorkspace() {
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   Agent
                 </span>
+                <div className="ml-1 flex rounded border border-white/10 bg-black/40 p-0.5" data-testid="ksl-mode">
+                  {([
+                    ["gex", "_Gex", "Review surgical edits before accepting", "bg-cyan-500/15 text-cyan-300"],
+                    ["focus", "Focus", "Research & documentation only", "bg-purple-500/15 text-purple-300"],
+                    ["keystone", "Keystone", "Agentic coding with auto-apply", "bg-amber-500/15 text-amber-300"],
+                  ] as const).map(([id, label, title, on]) => (
+                    <button
+                      key={id}
+                      onClick={() => setChatMode(id)}
+                      title={title}
+                      data-testid={`ksl-mode-${id}`}
+                      className={`rounded-sm px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider transition-colors ${
+                        chatMode === id ? on : "text-zinc-600 hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <div className="ml-auto flex items-center gap-1">
                   <Select
                     value={effectiveProvider}
@@ -1236,7 +1460,9 @@ export default function KeystoneLiteWorkspace() {
                     <p className="text-[12px]">
                       Ask the agent to build something.
                       <br />
-                      File changes are applied automatically.
+                      {chatMode === "keystone"
+                        ? "File changes are applied automatically."
+                        : "File changes wait for your review."}
                     </p>
                   </div>
                 )}
@@ -1269,12 +1495,86 @@ export default function KeystoneLiteWorkspace() {
                           }`}
                         >
                           {m.content ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={mdComponents as any}
-                            >
-                              {m.content}
-                            </ReactMarkdown>
+                            (() => {
+                              if (m.role !== "assistant") {
+                                return (
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={mdComponents as any}
+                                  >
+                                    {m.content}
+                                  </ReactMarkdown>
+                                );
+                              }
+                              // lite parity (ChatPanel.renderMessageContent):
+                              // sentinel blocks never render raw — they become
+                              // the Surgical Edits card; prose renders clean.
+                              const { edits, explanation } = parseSurgicalEdits(m.content);
+                              const clean = stripPartialSentinels(explanation);
+                              const pending = (m.filesTouched || []).some(
+                                (f) => f in pendingReview
+                              );
+                              const applied = chatMode === "keystone" || !pending;
+                              return (
+                                <>
+                                  {edits.length > 0 && (
+                                    <div
+                                      className={`mb-2 rounded border px-2 py-1.5 ${
+                                        applied
+                                          ? "border-emerald-500/25 bg-emerald-500/[0.06]"
+                                          : "border-amber-500/25 bg-amber-500/[0.06]"
+                                      }`}
+                                      data-testid="ksl-edits-card"
+                                    >
+                                      <div
+                                        className={`mb-1 font-mono text-[9.5px] uppercase tracking-[0.15em] ${
+                                          applied ? "text-emerald-300" : "text-amber-300"
+                                        }`}
+                                      >
+                                        {applied
+                                          ? "Applied"
+                                          : "Surgical edits — review below"}{" "}
+                                        ({edits.length})
+                                      </div>
+                                      {edits.map((ed, i) => (
+                                        <div
+                                          key={`${ed.file}-${i}`}
+                                          className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-400"
+                                        >
+                                          <FileCode className="h-2.5 w-2.5 shrink-0 text-zinc-500" />
+                                          <button
+                                            onClick={() => openFile(ed.file)}
+                                            className="truncate hover:text-cyan-300"
+                                            title={ed.file}
+                                          >
+                                            {ed.file}
+                                          </button>
+                                          <span className="shrink-0 text-zinc-600">
+                                            {ed.type === "replace"
+                                              ? `replace ${ed.startLine}–${ed.endLine ?? ed.startLine}`
+                                              : ed.type === "insert"
+                                                ? `insert @${ed.startLine}`
+                                                : ed.type === "delete"
+                                                  ? `delete ${ed.startLine}–${ed.endLine ?? ed.startLine}`
+                                                  : ed.type === "create"
+                                                    ? "new file"
+                                                    : "full write"}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {(clean || edits.length === 0) && (
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={mdComponents as any}
+                                    >
+                                      {clean || m.content}
+                                    </ReactMarkdown>
+                                  )}
+                                </>
+                              );
+                            })()
                           ) : (
                             m.role === "assistant" &&
                             sending && (
@@ -1306,6 +1606,54 @@ export default function KeystoneLiteWorkspace() {
                 ))}
                 <div ref={chatEndRef} />
               </div>
+
+              {/* review gate (_Gex/Focus): pending edits — Keep or Revert */}
+              {Object.keys(pendingReview).length > 0 && (
+                <div
+                  className="shrink-0 border-t border-amber-500/20 bg-amber-500/[0.04] px-2.5 py-1.5"
+                  data-testid="ksl-review-strip"
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-300">
+                      Surgical edits — review ({Object.keys(pendingReview).length})
+                    </span>
+                    <button
+                      onClick={keepReviewed}
+                      className="ml-auto flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20"
+                      data-testid="ksl-review-keep"
+                    >
+                      <CheckCircle2 className="h-2.5 w-2.5" /> Keep all
+                    </button>
+                    <button
+                      onClick={revertReviewed}
+                      className="flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20"
+                      data-testid="ksl-review-revert"
+                    >
+                      <RotateCcw className="h-2.5 w-2.5" /> Revert all
+                    </button>
+                  </div>
+                  <div className="flex max-h-20 flex-wrap gap-1 overflow-y-auto">
+                    {Object.entries(pendingReview).map(([fp, ch]) => (
+                      <span
+                        key={fp}
+                        className="flex items-center gap-1 rounded border border-amber-500/15 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-zinc-300"
+                      >
+                        <button onClick={() => openFile(fp)} className="hover:text-cyan-300" title={fp}>
+                          {baseName(fp)}
+                          {ch.created ? " (new)" : ""}
+                        </button>
+                        <button
+                          onClick={() => revertOnePending(fp)}
+                          className="text-zinc-600 hover:text-amber-300"
+                          title="Revert this file"
+                        >
+                          <RotateCcw className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* applied-changes strip: auto-apply stays on, this is the undo */}
               {Object.keys(agentChanges).length > 0 && (
