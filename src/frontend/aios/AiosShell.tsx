@@ -16,6 +16,7 @@ import {
   Wrench, TrendingUp, GraduationCap, UserPlus, Boxes, Settings,
 } from "lucide-react";
 import AppWindow, { type WindowState } from "./AppWindow";
+import { PromptPortalHome } from "./PromptPortalHome";
 import { aias } from "../aias";
 import { Toaster } from "sonner";
 import { Toaster as ShadToaster } from "../v1/components/ui/toaster";
@@ -398,17 +399,14 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
     dispatch({ type: "OPEN", app });
   };
 
-  const h = new Date().getHours();
-  const greet = h < 5 ? "Burning the midnight oil" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-[#0a0a0f]"
          style={{ backgroundImage: "radial-gradient(80% 60% at 20% 0%, rgba(99,102,241,.14), transparent 60%), radial-gradient(70% 55% at 90% 100%, rgba(16,185,129,.10), transparent 60%)" }}>
       {/* top bar */}
       <div className="z-10 flex items-center gap-3 border-b border-white/10 px-4 py-2 backdrop-blur">
         <span className="flex items-center gap-2 text-sm font-bold text-white">
-          <LayoutGrid className="h-4 w-4 text-emerald-400" /> AiOS
-          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400">v2</span>
+          <LayoutGrid className="h-4 w-4 text-emerald-400" /> AiAS Portal
+          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400">v3</span>
         </span>
         <span className="flex-1" />
         <Clock />
@@ -418,30 +416,17 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
         </button>
       </div>
 
-      {/* desktop */}
+      {/* prompt-first v3 stage; existing apps still mount as native windows */}
       <div className="relative min-h-0 flex-1">
-        <div className="h-full overflow-y-auto px-6 pb-24 pt-6">
-          <h1 className="text-xl font-bold text-white">{greet}, {opts.displayName} <span className="align-middle">👋</span></h1>
-          <p className="mt-0.5 text-sm text-zinc-400">Your whole platform, one desktop. Open anything.</p>
-          <BriefingWidget onOpen={(appId) => {
-            const app = APPS.find((a) => a.id === appId);
-            if (app) dispatch({ type: "OPEN", app });
-          }} />
-          <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-3">
-            {APPS.map((app) => {
-              const Icon = app.icon;
-              return (
-                <button key={app.id} onClick={() => open(app)} title={app.blurb}
-                        className="group flex flex-col items-center gap-1.5 rounded-xl p-2.5 transition hover:bg-white/5">
-                  <span className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${app.gradient} shadow-lg transition group-hover:scale-105 group-active:scale-95`}>
-                    <Icon className="h-6 w-6 text-white" strokeWidth={1.8} />
-                  </span>
-                  <span className="text-[11px] font-medium text-zinc-300">{app.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <PromptPortalHome
+          displayName={opts.displayName}
+          apps={APPS}
+          onOpen={(appId) => {
+            const app = APPS.find((entry) => entry.id === appId);
+            if (app) open(app);
+          }}
+          onClassic={opts.onClassic}
+        />
 
         {/* windows */}
         {store.windows.map((w) => {
@@ -464,32 +449,6 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
       <ShadToaster />
 
-      {/* dock — slides away while any window is open so it never sits on top
-          of app UIs (composer bars, bottom navs); reappears when everything
-          is closed or minimized. */}
-      <div
-        className={`pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center transition-all duration-300 ${
-          store.windows.some((w) => !w.minimized) ? "opacity-0" : ""
-        }`}
-        style={{ transform: store.windows.some((w) => !w.minimized) ? "translateY(6rem)" : "translateY(0)" }}
-      >
-        <div className={`flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/50 px-2.5 py-1.5 backdrop-blur-xl ${
-          store.windows.some((w) => !w.minimized) ? "pointer-events-none" : "pointer-events-auto"
-        }`}>
-          {APPS.slice(0, 8).map((app) => {
-            const Icon = app.icon;
-            const running = store.windows.some((w) => w.appId === app.id);
-            return (
-              <button key={app.id} onClick={() => open(app)} title={app.label} className="group relative p-0.5">
-                <span className={`grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br ${app.gradient} transition group-hover:scale-110 group-active:scale-95`}>
-                  <Icon className="h-5 w-5 text-white" strokeWidth={1.8} />
-                </span>
-                {running && <span className="absolute -bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-emerald-400" />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
