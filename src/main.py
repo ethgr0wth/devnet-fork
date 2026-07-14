@@ -563,6 +563,12 @@ async def bridge_sync_workspaces(request: Request,
         # lists from user:ecosystems:{uid} — without this index the bridged
         # twin never appears in the switcher and users land on DevOne.
         pipeline.sadd(f"user:ecosystems:{user['id']}", env_id)
+        # Third index (Explore): /api/ecosystems/explore reads the
+        # ecosystems:list zset (zrevrange) — DevOne backfill (1279) and
+        # create_ecosystem (3498) both zadd it; the bridge never did, so
+        # twins were invisible in Explore too. nx=True keeps it idempotent
+        # and backfills legacy twins without churning explore ordering.
+        pipeline.zadd("ecosystems:list", {env_id: now.timestamp()}, nx=True)
         if existing is None:
             # First syncer created the twin (owner_id above) — admin, same
             # vocabulary the DevOne backfill grants.
