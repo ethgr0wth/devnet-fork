@@ -30,7 +30,7 @@ import {
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
   Zap, Bot, User, FileCode, FileJson, FileText, Trash2, Plus, Circle,
   RotateCcw, CheckCircle2, Cpu, MessageSquare, Eye, Pencil,
-  Settings, Sparkles, Activity,
+  Settings, Sparkles, Activity, Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -83,6 +83,15 @@ interface TermResult {
   exit_code?: number;
   duration_ms?: number;
   cwd?: string;
+}
+
+// Saved KeyStone artifact (parity with QuestsWorkspace's KSArtifact).
+interface KSArtifact {
+  id: string;
+  name: string;
+  target_stack: string;
+  status: string;
+  created_at: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -190,6 +199,113 @@ export default function KeystoneLiteWorkspace() {
   const providerModels = effectiveProvider
     ? getModelsForProvider(effectiveProvider)
     : [];
+
+  // ── artifacts (parity with QuestsWorkspace) ────────────────────────────────
+  // Saved KeyStone artifacts (/api/artifacts): list, import-into-env, rename,
+  // delete. Mirrors QW's ksArtifacts surface; desktop panel toggled from the
+  // Agent header (Package button), mobile falls back to QW which already has it.
+  const [ksArtifacts, setKsArtifacts] = useState<KSArtifact[]>([]);
+  const [ksArtifactsLoading, setKsArtifactsLoading] = useState(false);
+  const [ksImporting, setKsImporting] = useState<string | null>(null);
+  const [renamingKsArtifactId, setRenamingKsArtifactId] = useState<string | null>(null);
+  const [renameKsArtifactValue, setRenameKsArtifactValue] = useState("");
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+
+  const KS_LANG_EXT: Record<string, string> = {
+    python: ".py", py: ".py", javascript: ".js", js: ".js",
+    typescript: ".ts", ts: ".ts", tsx: ".tsx", jsx: ".jsx",
+    html: ".html", css: ".css", json: ".json",
+    markdown: ".md", md: ".md", sql: ".sql",
+    bash: ".sh", sh: ".sh", shell: ".sh",
+    go: ".go", rust: ".rs", rs: ".rs",
+    java: ".java", ruby: ".rb", rb: ".rb",
+    php: ".php", swift: ".swift", kotlin: ".kt",
+    yaml: ".yaml", yml: ".yaml", xml: ".xml",
+    c: ".c", cpp: ".cpp", "c++": ".cpp",
+    vue: ".vue", svelte: ".svelte",
+  };
+
+  const loadKsArtifacts = useCallback(async () => {
+    setKsArtifactsLoading(true);
+    try {
+      const res = await apiFetch("/api/artifacts?limit=100");
+      if (res.ok) {
+        const data = await res.json();
+        setKsArtifacts(data.artifacts || []);
+      }
+    } catch (e) { console.error("Failed to load artifacts:", e); }
+    finally { setKsArtifactsLoading(false); }
+  }, []);
+
+  useEffect(() => { loadKsArtifacts(); }, [loadKsArtifacts]);
+
+  const importArtifactToEnv = async (artifact: KSArtifact) => {
+    if (!envId) return;
+    setKsImporting(artifact.id);
+    try {
+      const fullRes = await apiFetch(`/api/artifacts/${artifact.id}`);
+      if (!fullRes.ok) { setKsImporting(null); return; }
+      const full = await fullRes.json();
+      const code = full.source_code || "";
+      if (!code) { setKsImporting(null); return; }
+      const stack = (full.target_stack || "").toLowerCase().trim();
+      let filename = artifact.name;
+      const ext = KS_LANG_EXT[stack] || "";
+      const hasDot = filename.includes(".");
+      if (ext) {
+        if (!filename.endsWith(ext)) filename = filename.replace(/\.[^.]*$/, "") + ext;
+      } else if (!hasDot && stack) {
+        filename += `.${stack}`;
+      } else if (!hasDot) {
+        filename += ".txt";
+      }
+      const writeRes = await apiFetch(`/api/keystone/environments/${envId}/files/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: filename, content: code }),
+      });
+      if (writeRes.ok) {
+        loadFileTree();
+        toast.success(`Imported ${filename}`);
+      } else {
+        toast.error("Failed to import artifact");
+      }
+    } catch (e) { console.error("Failed to import artifact:", e); toast.error("Failed to import artifact"); }
+    finally { setKsImporting(null); }
+  };
+
+  const startKsArtifactRename = (id: string, currentName: string) => {
+    setRenamingKsArtifactId(id);
+    setRenameKsArtifactValue(currentName);
+  };
+
+  const submitKsArtifactRename = async () => {
+    if (!renamingKsArtifactId || !renameKsArtifactValue.trim()) { setRenamingKsArtifactId(null); return; }
+    const old = ksArtifacts.find((a) => a.id === renamingKsArtifactId);
+    if (old && renameKsArtifactValue.trim() === old.name) { setRenamingKsArtifactId(null); return; }
+    try {
+      const res = await apiFetch(`/api/artifacts/${renamingKsArtifactId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameKsArtifactValue.trim() }),
+      });
+      if (res.ok) {
+        toast.success("Artifact renamed");
+        loadKsArtifacts();
+      } else { toast.error("Rename failed"); }
+    } catch (e) { console.error(e); toast.error("Rename failed"); }
+    finally { setRenamingKsArtifactId(null); }
+  };
+
+  const deleteKsArtifact = async (id: string) => {
+    try {
+      const res = await apiFetch(`/api/artifacts/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Artifact deleted");
+        loadKsArtifacts();
+      } else { toast.error("Delete failed"); }
+    } catch (e) { console.error(e); toast.error("Delete failed"); }
+  };
 
   // runtime / terminal
   const [runtimeSessionId, setRuntimeSessionId] = useState<string | null>(null);
@@ -957,51 +1073,6 @@ export default function KeystoneLiteWorkspace() {
         </h3>
         <div className="space-y-3.5">
           <div>
-            <label className="mb-1 block text-[11px] text-zinc-500">Provider</label>
-            <Select
-              value={effectiveProvider}
-              onValueChange={(v) => {
-                setSelectedProvider(v);
-                setSelectedModel("auto");
-              }}
-            >
-              <SelectTrigger
-                className="h-7 border-white/10 bg-white/[0.03] text-[11.5px] text-zinc-300"
-                data-testid="settings-select-provider"
-              >
-                <SelectValue placeholder="Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-zinc-500">Model</label>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger
-                className="h-7 border-white/10 bg-white/[0.03] text-[11.5px] text-zinc-300"
-                data-testid="settings-select-model"
-              >
-                <SelectValue placeholder="Auto" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto" className="text-xs">
-                  Auto
-                </SelectItem>
-                {providerModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
             <label className="mb-1 block text-[11px] text-zinc-500">
               Temperature: {ksTemperature.toFixed(1)}
             </label>
@@ -1083,6 +1154,118 @@ export default function KeystoneLiteWorkspace() {
           </div>
         </div>
       </div>
+    </motion.div>
+  );
+
+  // ── artifacts panel (desktop parity with QuestsWorkspace) ──────────────────
+  // Same shape + data-testids as QW's artifacts tab, restyled to the KLW dark
+  // design system. List of saved artifacts with import-into-env, rename, delete.
+  const renderArtifactsContent = () => (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-1 flex-col overflow-y-auto p-3"
+      data-testid="ksl-artifacts-content"
+    >
+      <div className="mb-2.5 flex items-center justify-between">
+        <h3 className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          <Package className="h-3 w-3" />
+          Saved Artifacts
+          {ksArtifacts.length > 0 && (
+            <span className="rounded border border-violet-500/30 bg-violet-500/10 px-1 text-[9px] text-violet-300">
+              {ksArtifacts.length}
+            </span>
+          )}
+        </h3>
+        <button
+          onClick={loadKsArtifacts}
+          title="Refresh"
+          className="rounded p-1 text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+          data-testid="ksl-artifacts-refresh"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {ksArtifactsLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-4 w-4 animate-spin text-violet-400/70" />
+        </div>
+      ) : ksArtifacts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center text-zinc-600">
+          <Package className="mb-2 h-6 w-6 opacity-50" />
+          <p className="text-[12px]">No artifacts yet</p>
+          <p className="mt-1 text-[10px] opacity-60">
+            Save code from Playground to see them here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {ksArtifacts.map((artifact) => (
+            <div
+              key={artifact.id}
+              className="group rounded border border-white/5 bg-white/[0.02] p-2.5 transition-colors hover:border-violet-500/30"
+              data-testid={`ksl-artifact-${artifact.id}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  {renamingKsArtifactId === artifact.id ? (
+                    <input
+                      type="text"
+                      value={renameKsArtifactValue}
+                      onChange={(e) => setRenameKsArtifactValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") submitKsArtifactRename();
+                        if (e.key === "Escape") setRenamingKsArtifactId(null);
+                      }}
+                      onBlur={submitKsArtifactRename}
+                      autoFocus
+                      className="w-full min-w-0 rounded border border-violet-500/40 bg-white/[0.03] px-1.5 py-0.5 text-[11.5px] text-zinc-200 focus:border-violet-400 focus:outline-none"
+                      data-testid={`input-rename-ks-artifact-${artifact.id}`}
+                    />
+                  ) : (
+                    <p
+                      className="cursor-text truncate text-[12px] text-zinc-300 transition-colors hover:text-violet-300"
+                      onClick={() => startKsArtifactRename(artifact.id, artifact.name)}
+                      data-testid={`text-ks-artifact-${artifact.id}`}
+                    >
+                      {artifact.name}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[10px] text-zinc-600">
+                    {artifact.target_stack || "text"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => importArtifactToEnv(artifact)}
+                    disabled={ksImporting === artifact.id}
+                    title="Import into this environment"
+                    className="flex items-center gap-1 rounded border border-violet-500/25 bg-violet-500/10 px-1.5 py-1 text-[10px] text-violet-300 transition-colors hover:bg-violet-500/20 disabled:opacity-50"
+                    data-testid={`button-import-artifact-${artifact.id}`}
+                  >
+                    {ksImporting === artifact.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Download className="h-3 w-3" />
+                        Import
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => deleteKsArtifact(artifact.id)}
+                    title="Delete artifact"
+                    className="rounded p-1 text-zinc-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                    data-testid={`button-delete-artifact-${artifact.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 
@@ -1552,42 +1735,32 @@ export default function KeystoneLiteWorkspace() {
                   {readOnlyMode ? "Read only" : "Read & write"}
                 </button>
                 <div className="ml-auto flex items-center gap-1">
-                  <Select
-                    value={effectiveProvider}
-                    onValueChange={(v) => {
-                      setSelectedProvider(v);
-                      setSelectedModel("auto");
-                    }}
-                  >
-                    <SelectTrigger className="h-6 w-[86px] border-white/10 bg-white/[0.03] px-1.5 text-[10.5px] text-zinc-400" data-testid="ksl-provider">
-                      <SelectValue placeholder="provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providers.map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-xs">
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={selectedModel} onValueChange={setSelectedModel}>
-                    <SelectTrigger className="h-6 w-[110px] border-white/10 bg-white/[0.03] px-1.5 text-[10.5px] text-zinc-400" data-testid="ksl-model">
-                      <SelectValue placeholder="model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto" className="text-xs">
-                        Auto
-                      </SelectItem>
-                      {providerModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id} className="text-xs">
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <button
-                    onClick={() => setSettingsOpen((v) => !v)}
-                    title="AI settings — provider, model, temperature, persona"
+                    onClick={() => {
+                      setArtifactsOpen((v) => !v);
+                      setSettingsOpen(false);
+                    }}
+                    title="Saved artifacts — import into this environment"
+                    data-testid="ksl-artifacts-toggle"
+                    className={`relative flex h-6 w-6 items-center justify-center rounded border transition-colors ${
+                      artifactsOpen
+                        ? "border-violet-500/40 bg-violet-500/15 text-violet-300"
+                        : "border-white/10 bg-white/[0.03] text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    <Package className="h-3.5 w-3.5" />
+                    {ksArtifacts.length > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded bg-violet-500 px-0.5 text-[8px] font-semibold text-white">
+                        {ksArtifacts.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSettingsOpen((v) => !v);
+                      setArtifactsOpen(false);
+                    }}
+                    title="AI settings — temperature, max tokens, persona"
                     data-testid="ksl-settings-toggle"
                     className={`flex h-6 w-6 items-center justify-center rounded border transition-colors ${
                       settingsOpen
@@ -1600,8 +1773,61 @@ export default function KeystoneLiteWorkspace() {
                 </div>
               </div>
 
-              {/* settings panel swaps in over the message list when open —
-                  desktop parity with QuestsWorkspace's settings tab. */}
+              {/* ── second ledge: provider + model — clear, breathing buttons ── */}
+              <div
+                className="flex h-8 shrink-0 items-center gap-2.5 border-b border-white/5 bg-[#0a0a0f] px-2.5"
+                data-testid="ksl-config-ledge"
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                  Provider
+                </span>
+                <Select
+                  value={effectiveProvider}
+                  onValueChange={(v) => {
+                    setSelectedProvider(v);
+                    setSelectedModel("auto");
+                  }}
+                >
+                  <SelectTrigger
+                    className="h-6 w-[124px] border-white/10 bg-white/[0.03] px-2 text-[11px] text-zinc-300"
+                    data-testid="ksl-provider"
+                  >
+                    <SelectValue placeholder="provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                  Model
+                </span>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger
+                    className="h-6 w-[156px] border-white/10 bg-white/[0.03] px-2 text-[11px] text-zinc-300"
+                    data-testid="ksl-model"
+                  >
+                    <SelectValue placeholder="model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto" className="text-xs">
+                      Auto
+                    </SelectItem>
+                    {providerModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-xs">
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* settings + artifacts panels swap in over the message list when
+                  open — desktop parity with QuestsWorkspace's tabs. They're
+                  mutually exclusive (the header toggles close the other). */}
               <AnimatePresence initial={false}>
                 {settingsOpen && (
                   <motion.div
@@ -1615,11 +1841,23 @@ export default function KeystoneLiteWorkspace() {
                     {renderSettingsContent()}
                   </motion.div>
                 )}
+                {artifactsOpen && (
+                  <motion.div
+                    key="ksl-artifacts"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex min-h-0 flex-1 flex-col border-b border-white/5 bg-[#0a0a0f]"
+                    data-testid="ksl-artifacts-panel"
+                  >
+                    {renderArtifactsContent()}
+                  </motion.div>
+                )}
               </AnimatePresence>
 
-              {/* messages — hidden while the settings panel is open so settings
-                  fully replaces the message view (QW tab parity). */}
-              {!settingsOpen && (
+              {/* messages — hidden while a panel is open so it fully replaces
+                  the message view (QW tab parity). */}
+              {!settingsOpen && !artifactsOpen && (
               <div
                 ref={chatScrollRef}
                 onScroll={onChatScroll}
