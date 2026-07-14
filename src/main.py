@@ -575,9 +575,11 @@ async def bridge_sync_workspaces(request: Request,
         # Third index (Explore): /api/ecosystems/explore reads the
         # ecosystems:list zset (zrevrange) — DevOne backfill (1279) and
         # create_ecosystem (3498) both zadd it; the bridge never did, so
-        # twins were invisible in Explore too. nx=True keeps it idempotent
-        # and backfills legacy twins without churning explore ordering.
-        pipeline.zadd("ecosystems:list", {env_id: now.timestamp()}, nx=True)
+        # twins were invisible in Explore too. Plain zadd (mapping only) —
+        # the RedisOnNedb shim's zadd(key, mapping) has no `nx` kwarg (the
+        # nx=True form 500'd bridge-sync, fixed in the #61 hotfix); re-scoring
+        # per pass just bumps the twin to the top, same as create_ecosystem.
+        pipeline.zadd("ecosystems:list", {env_id: now.timestamp()})
         if existing is None:
             # First syncer created the twin (owner_id above) — admin, same
             # vocabulary the DevOne backfill grants.
