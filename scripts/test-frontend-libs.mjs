@@ -162,16 +162,18 @@ test("INSERT and DELETE ops parse; stripPartialSentinels drops residue", () => {
   assert.equal(stripPartialSentinels("keep\n<<<EDIT half"), "keep");
 });
 
-// ── portalSession ────────────────────────────────────────────────────────────
+// ── portalSession (v2: model → session map) ─────────────────────────────────
 const {
+  adoptPortalSession,
   ensurePortalSession,
-  updatePortalSessionModel,
   buildPortalSessionCreateBody,
+  findPortalSessionForModel,
   isPlaygroundProvider,
   PORTAL_SESSION_NAME,
+  portalSessionNameFor,
 } = await importCjs(bundle("src/frontend/v1/lib/portalSession.ts", "portalSession.cjs"));
 
-console.log("portalSession (system playground session):");
+console.log("portalSession (per-model system sessions):");
 
 const mkClient = (routes) => {
   const calls = [];
@@ -186,54 +188,82 @@ const mkClient = (routes) => {
   };
 };
 
-test("create body: ttl_hours 0 (no expiration), model fields, exact field set", () => {
+const SESSIONS = [
+  { id: "sA", name: portalSessionNameFor("claude-sonnet-4-6"), model_name: "claude-sonnet-4-6", status: "active", messages: [{ id: 1 }] },
+  { id: "sB", name: portalSessionNameFor("grok-4"), model_name: "grok-4", status: "active", messages: [{ id: 2 }, { id: 3 }] },
+  { id: "sOld", name: portalSessionNameFor("llama-3.3-70b-versatile"), model_name: "llama-3.3-70b-versatile", status: "expired", messages: [] },
+  { id: "sLegacy", name: PORTAL_SESSION_NAME, model_name: "gemini-2.5-pro", status: "active", messages: [{ id: 9 }] },
+  { id: "sOther", name: "My scratch session", model_name: "grok-4", status: "active", messages: [] },
+];
+
+test("create body: per-model name, ttl_hours 0, model fields, exact field set", () => {
   const b = buildPortalSessionCreateBody({ provider: "anthropic", model: "claude-sonnet-4-6" });
   assert.equal(b.ttl_hours, 0);
   assert.equal(b.model_provider, "anthropic");
   assert.equal(b.model_name, "claude-sonnet-4-6");
-  assert.equal(b.name, PORTAL_SESSION_NAME);
+  assert.equal(b.name, "AiAS Portal — claude-sonnet-4-6");
   assert.deepEqual(
     Object.keys(b).sort(),
     ["model_name", "model_provider", "name", "persona", "ttl_hours"]
   );
 });
 
-test("existing system session adopted — no POST fired", async () => {
+test("map lookup picks THIS model's session among several portal sessions", () => {
+  assert.equal(findPortalSessionForModel(SESSIONS, "grok-4").id, "sB");
+  assert.equal(findPortalSessionForModel(SESSIONS, "claude-sonnet-4-6").id, "sA");
+});
+
+test("legacy exact-name 'AiAS Portal' session adopted for its model", () => {
+  assert.equal(findPortalSessionForModel(SESSIONS, "gemini-2.5-pro").id, "sLegacy");
+});
+
+test("expired sessions and non-portal names never match", () => {
+  assert.equal(findPortalSessionForModel(SESSIONS, "llama-3.3-70b-versatile"), undefined);
+  // sOther is grok-4 but not portal-named — sB must win, sOther never
+  assert.notEqual(findPortalSessionForModel(SESSIONS, "grok-4").id, "sOther");
+});
+
+test("switch: adoptPortalSession returns the session + messages, NEVER creates", async () => {
   const c = mkClient([
-    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: [
-      { id: "s1", name: PORTAL_SESSION_NAME, status: "active", messages: [{ id: 1 }] },
-    ] } },
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: SESSIONS } },
   ]);
-  const r = await ensurePortalSession(c, { provider: "groq", model: "llama-3.3-70b-versatile" });
-  assert.equal(r.id, "s1");
-  assert.equal(r.created, false);
-  assert.equal(r.messages.length, 1);
+  const r = await adoptPortalSession(c, "grok-4");
+  assert.equal(r.id, "sB");
+  assert.equal(r.messages.length, 2);
   assert.ok(!c.calls.some((x) => x.method === "POST"));
 });
 
-test("expired portal session ignored → creates with the selected model", async () => {
+test("switch to a model with no session → null, and still no POST", async () => {
   const c = mkClient([
-    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: [
-      { id: "old", name: PORTAL_SESSION_NAME, status: "expired" },
-    ] } },
-    { m: "POST", p: "/api/playground/sessions", res: { ok: true, status: 200, data: { id: "new1" } } },
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: SESSIONS } },
   ]);
-  const r = await ensurePortalSession(c, { provider: "anthropic", model: "claude-sonnet-4-6" });
-  assert.equal(r.id, "new1");
-  assert.equal(r.created, true);
-  const post = c.calls.find((x) => x.method === "POST");
-  assert.equal(post.body.ttl_hours, 0);
-  assert.equal(post.body.model_provider, "anthropic");
-  assert.equal(post.body.model_name, "claude-sonnet-4-6");
+  const r = await adoptPortalSession(c, "mistral-large");
+  assert.equal(r, null);
+  assert.ok(!c.calls.some((x) => x.method === "POST"));
 });
 
-test("model adjust → PATCH the session with model fields only", async () => {
+test("first prompt on a new model → creates ITS session (other models' sessions ignored)", async () => {
   const c = mkClient([
-    { m: "PATCH", p: "/api/playground/sessions/s1", res: { ok: true, status: 200, data: { id: "s1" } } },
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: SESSIONS } },
+    { m: "POST", p: "/api/playground/sessions", res: { ok: true, status: 200, data: { id: "sNew" } } },
   ]);
-  const ok = await updatePortalSessionModel(c, "s1", { provider: "xai", model: "grok-4" });
-  assert.equal(ok, true);
-  assert.deepEqual(c.calls[0].body, { model_provider: "xai", model_name: "grok-4" });
+  const r = await ensurePortalSession(c, { provider: "mistral", model: "mistral-large" });
+  assert.equal(r.id, "sNew");
+  assert.equal(r.created, true);
+  const post = c.calls.find((x) => x.method === "POST");
+  assert.equal(post.body.name, "AiAS Portal — mistral-large");
+  assert.equal(post.body.ttl_hours, 0);
+  assert.equal(post.body.model_name, "mistral-large");
+});
+
+test("first prompt on a mapped model → adopts, no create", async () => {
+  const c = mkClient([
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: SESSIONS } },
+  ]);
+  const r = await ensurePortalSession(c, { provider: "anthropic", model: "claude-sonnet-4-6" });
+  assert.equal(r.id, "sA");
+  assert.equal(r.created, false);
+  assert.ok(!c.calls.some((x) => x.method === "POST"));
 });
 
 test("provider gate: ProviderType chat providers only (no pin/tavily)", () => {

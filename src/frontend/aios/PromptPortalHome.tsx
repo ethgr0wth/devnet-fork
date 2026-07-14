@@ -8,9 +8,9 @@ import { aias } from "../aias";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import {
+  adoptPortalSession,
   ensurePortalSession,
   isPlaygroundProvider,
-  updatePortalSessionModel,
   type PortalModelSelection,
 } from "@/lib/portalSession";
 
@@ -47,8 +47,17 @@ export function PromptPortalHome({
   const [prompt, setPrompt] = useState("");
   const [doorsOpen, setDoorsOpen] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessionId, setSessionId] = useState("");
+  // model → session id (fast path; the server list is the durable map,
+  // since playground sessions carry model_name)
+  const [sessionByModel, setSessionByModel] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
+
+  const hydrateMessages = (raw: any[]) =>
+    setMessages(
+      (raw || []).map((m: any) => ({
+        id: String(m.id), role: m.role, content: String(m.content || ""), timestamp: m.timestamp,
+      }))
+    );
 
   // model binding — same tech Keystone uses (/api/providers/all, federated)
   const { providers, provider: defaultProvider, getModelsForProvider } = useAvailableModels();
@@ -80,13 +89,25 @@ export function PromptPortalHome({
     const next = { provider, model };
     setSelection(next);
     setModelPickerOpen(false);
-    // The system session follows the user's model — adjust in place.
-    if (sessionId) {
-      void updatePortalSessionModel(aias, sessionId, next).then((ok) => {
-        if (ok) toast.success(`Portal model → ${model}`);
-        else toast.error("Could not update the session model");
-      });
-    }
+    if (model === effectiveSelection.model) return;
+    // Model → session map: each model keeps its OWN never-expiring session.
+    // Switching adopts that model's session and continues it; nothing is
+    // created just by switching (creation waits for the first prompt).
+    void (async () => {
+      try {
+        const adopted = await adoptPortalSession(aias, model);
+        if (adopted) {
+          setSessionByModel((prev) => ({ ...prev, [model]: adopted.id }));
+          hydrateMessages(adopted.messages);
+          toast.success(`Continuing your ${model} session`);
+        } else {
+          setMessages([]);
+          toast.info(`New ${model} conversation — starts with your first prompt`);
+        }
+      } catch {
+        setMessages([]);
+      }
+    })();
   };
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -104,19 +125,15 @@ export function PromptPortalHome({
   }, []);
 
   const ensureSession = async (): Promise<string> => {
-    if (sessionId) return sessionId;
-    // Idempotent system-session bootstrap (lib/portalSession, tested):
-    // adopt the existing non-expired "AiAS Portal" session, else create it
-    // with ttl_hours: 0 (never expires) and the user's selected model.
+    const model = effectiveSelection.model;
+    const cached = sessionByModel[model];
+    if (cached) return cached;
+    // Idempotent per-model bootstrap (lib/portalSession, tested): adopt this
+    // model's existing portal session, else create it — per-model name,
+    // ttl_hours: 0 (never expires), bound to the selected model.
     const found = await ensurePortalSession(aias, effectiveSelection);
-    if (!found.created) {
-      setMessages(
-        (found.messages || []).map((m: any) => ({
-          id: String(m.id), role: m.role, content: String(m.content || ""), timestamp: m.timestamp,
-        }))
-      );
-    }
-    setSessionId(found.id);
+    if (!found.created) hydrateMessages(found.messages);
+    setSessionByModel((prev) => ({ ...prev, [model]: found.id }));
     return found.id;
   };
 
