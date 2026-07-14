@@ -495,11 +495,20 @@ async def bridge_sync_workspaces(request: Request,
 
     me = await _bridge_upstream(token, "/api/user/me") or {}
     me = me.get("user") or me
-    active_env = me.get("active_environment_id") or ""
 
     envs_body = await _bridge_upstream(token, "/api/environments/") or {}
     envs = envs_body.get("environments") or (
         envs_body if isinstance(envs_body, list) else [])
+
+    # active_environment_id lives on the ENVIRONMENTS LIST response
+    # (EnvironmentListResponse.active_environment_id), NOT on /api/user/me —
+    # reading it from `me` always returned "" so every bridged group twin fell
+    # through to DEVONE_ECOSYSTEM_ID and showed up under DevOne instead of the
+    # environment the user is actually viewing. envs_body is the authoritative
+    # source; keep me as a belt-and-braces fallback if upstream ever moves it.
+    active_env = (envs_body.get("active_environment_id")
+                  if isinstance(envs_body, dict) else None) \
+        or me.get("active_environment_id") or ""
 
     # Paginated pull — upstream caps at 100 per page. Pull up to 5 pages
     # (500 workspaces) per pass to stay inside the governor's budget. If a
@@ -568,8 +577,8 @@ async def bridge_sync_workspaces(request: Request,
         # create_ecosystem (3498) both zadd it; the bridge never did, so
         # twins were invisible in Explore too. Plain zadd (mapping only) —
         # the RedisOnNedb shim's zadd(key, mapping) has no `nx` kwarg (the
-        # nx=True form 500'd bridge-sync); re-scoring on each pass just
-        # bumps the twin to the top of Explore, same as create_ecosystem.
+        # nx=True form 500'd bridge-sync, fixed in the #61 hotfix); re-scoring
+        # per pass just bumps the twin to the top, same as create_ecosystem.
         pipeline.zadd("ecosystems:list", {env_id: now.timestamp()})
         if existing is None:
             # First syncer created the twin (owner_id above) — admin, same
@@ -604,7 +613,21 @@ async def bridge_sync_workspaces(request: Request,
             existing["status"] = "approved"
             existing["needs_attention"] = attention
             existing["origin_synced_at"] = now.isoformat()
-            existing["ecosystem_id"] = existing.get("ecosystem_id") or eco_id
+            # Re-scope misfiled twins: prior to the active_env fix every twin
+            # landed under DEVONE_ECOSYSTEM_ID. If this existing twin's
+            # ecosystem_id no longer matches the resolved eco_id, move it —
+            # update the field AND the ecosystem:groups:{...} zset index, or
+            # /api/groups?ecosystem_id=<real env> stays empty even after deploy.
+            old_eco = existing.get("ecosystem_id")
+            if old_eco and old_eco != eco_id:
+                existing["ecosystem_id"] = eco_id
+                pipeline = redis_client.pipeline()
+                pipeline.zrem(f"ecosystem:groups:{old_eco}", ws_id)
+                pipeline.zadd(f"ecosystem:groups:{eco_id}",
+                              {ws_id: now.timestamp()})
+                pipeline.execute()
+            elif not old_eco:
+                existing["ecosystem_id"] = eco_id
             redis_client.set(f"group:{ws_id}", json.dumps(existing))
             counts["communities_updated"] += 1
         else:
