@@ -162,5 +162,86 @@ test("INSERT and DELETE ops parse; stripPartialSentinels drops residue", () => {
   assert.equal(stripPartialSentinels("keep\n<<<EDIT half"), "keep");
 });
 
+// ── portalSession ────────────────────────────────────────────────────────────
+const {
+  ensurePortalSession,
+  updatePortalSessionModel,
+  buildPortalSessionCreateBody,
+  isPlaygroundProvider,
+  PORTAL_SESSION_NAME,
+} = await importCjs(bundle("src/frontend/v1/lib/portalSession.ts", "portalSession.cjs"));
+
+console.log("portalSession (system playground session):");
+
+const mkClient = (routes) => {
+  const calls = [];
+  return {
+    calls,
+    json: async (path, init = {}) => {
+      const method = init.method || "GET";
+      calls.push({ path, method, body: init.body ? JSON.parse(init.body) : undefined });
+      const hit = routes.find((r) => r.m === method && r.p === path);
+      return hit ? hit.res : { ok: false, status: 404, data: {} };
+    },
+  };
+};
+
+test("create body: ttl_hours 0 (no expiration), model fields, exact field set", () => {
+  const b = buildPortalSessionCreateBody({ provider: "anthropic", model: "claude-sonnet-4-6" });
+  assert.equal(b.ttl_hours, 0);
+  assert.equal(b.model_provider, "anthropic");
+  assert.equal(b.model_name, "claude-sonnet-4-6");
+  assert.equal(b.name, PORTAL_SESSION_NAME);
+  assert.deepEqual(
+    Object.keys(b).sort(),
+    ["model_name", "model_provider", "name", "persona", "ttl_hours"]
+  );
+});
+
+test("existing system session adopted — no POST fired", async () => {
+  const c = mkClient([
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: [
+      { id: "s1", name: PORTAL_SESSION_NAME, status: "active", messages: [{ id: 1 }] },
+    ] } },
+  ]);
+  const r = await ensurePortalSession(c, { provider: "groq", model: "llama-3.3-70b-versatile" });
+  assert.equal(r.id, "s1");
+  assert.equal(r.created, false);
+  assert.equal(r.messages.length, 1);
+  assert.ok(!c.calls.some((x) => x.method === "POST"));
+});
+
+test("expired portal session ignored → creates with the selected model", async () => {
+  const c = mkClient([
+    { m: "GET", p: "/api/playground/sessions", res: { ok: true, status: 200, data: [
+      { id: "old", name: PORTAL_SESSION_NAME, status: "expired" },
+    ] } },
+    { m: "POST", p: "/api/playground/sessions", res: { ok: true, status: 200, data: { id: "new1" } } },
+  ]);
+  const r = await ensurePortalSession(c, { provider: "anthropic", model: "claude-sonnet-4-6" });
+  assert.equal(r.id, "new1");
+  assert.equal(r.created, true);
+  const post = c.calls.find((x) => x.method === "POST");
+  assert.equal(post.body.ttl_hours, 0);
+  assert.equal(post.body.model_provider, "anthropic");
+  assert.equal(post.body.model_name, "claude-sonnet-4-6");
+});
+
+test("model adjust → PATCH the session with model fields only", async () => {
+  const c = mkClient([
+    { m: "PATCH", p: "/api/playground/sessions/s1", res: { ok: true, status: 200, data: { id: "s1" } } },
+  ]);
+  const ok = await updatePortalSessionModel(c, "s1", { provider: "xai", model: "grok-4" });
+  assert.equal(ok, true);
+  assert.deepEqual(c.calls[0].body, { model_provider: "xai", model_name: "grok-4" });
+});
+
+test("provider gate: ProviderType chat providers only (no pin/tavily)", () => {
+  assert.ok(isPlaygroundProvider("groq"));
+  assert.ok(isPlaygroundProvider("anthropic"));
+  assert.ok(!isPlaygroundProvider("pin"));
+  assert.ok(!isPlaygroundProvider("tavily"));
+});
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(process.exitCode ? "\nFAILED" : `\nAll ${passed} tests passed.`);
