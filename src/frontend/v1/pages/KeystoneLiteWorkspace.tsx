@@ -30,7 +30,9 @@ import {
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
   Zap, Bot, User, FileCode, FileJson, FileText, Trash2, Plus, Circle,
   RotateCcw, CheckCircle2, Cpu, MessageSquare, Eye, Pencil,
+  Settings, Sparkles, Activity,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -48,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/queryClient";
 import { RuntimeSession } from "@/lib/runtimeSession";
 import { parseSurgicalEdits, stripPartialSentinels } from "@/lib/surgicalEdit";
@@ -156,11 +159,16 @@ export default function KeystoneLiteWorkspace() {
   // patch pipeline in a later parity increment.
   const [editorMode, setEditorMode] = useState<EditorMode>("keystone");
   const [readOnlyMode, setReadOnlyMode] = useState(false);
-  // chat settings — QW-parity request fields; the settings tab UI is the
-  // next increment (setters land with it).
-  const [ksTemperature] = useState(0.7);
-  const [ksMaxTokens] = useState(32768);
-  const [ksPersona] = useState("");
+  // chat settings — QW-parity request fields. The settings panel (gear icon
+  // in the Agent header) surfaces editor-less setters for these; they flow
+  // straight into buildKeystoneChatBody on every chat send.
+  const [ksTemperature, setKsTemperature] = useState(0.7);
+  const [ksMaxTokens, setKsMaxTokens] = useState(32768);
+  const [ksPersona, setKsPersona] = useState("");
+  // settings panel visibility — desktop parity with QuestsWorkspace's settings
+  // tab + mobile drawer (mobile already renders QW untouched, so this is the
+  // desktop-only surface).
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // rollback: auto-apply stays on, but every applied change keeps a snapshot
   // (path → pre-change content; created=true means revert deletes the file)
   const [agentChanges, setAgentChanges] = useState<
@@ -931,6 +939,153 @@ export default function KeystoneLiteWorkspace() {
     ),
   };
 
+  // ── settings panel (desktop parity with QuestsWorkspace) ───────────────────
+  // Same field set + data-testids as QW's renderSettingsContent(), restyled to
+  // the KLW dark design system (bg #0a0a0f / cyan-400 accent / mono type) so it
+  // reads as native chrome rather than a transplanted QW tab.
+  const renderSettingsContent = () => (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-1 flex-col gap-5 overflow-y-auto p-3"
+      data-testid="ksl-settings-content"
+    >
+      <div>
+        <h3 className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          <Sparkles className="h-3 w-3" />
+          AI Configuration
+        </h3>
+        <div className="space-y-3.5">
+          <div>
+            <label className="mb-1 block text-[11px] text-zinc-500">Provider</label>
+            <Select
+              value={effectiveProvider}
+              onValueChange={(v) => {
+                setSelectedProvider(v);
+                setSelectedModel("auto");
+              }}
+            >
+              <SelectTrigger
+                className="h-7 border-white/10 bg-white/[0.03] text-[11.5px] text-zinc-300"
+                data-testid="settings-select-provider"
+              >
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] text-zinc-500">Model</label>
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger
+                className="h-7 border-white/10 bg-white/[0.03] text-[11.5px] text-zinc-300"
+                data-testid="settings-select-model"
+              >
+                <SelectValue placeholder="Auto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto" className="text-xs">
+                  Auto
+                </SelectItem>
+                {providerModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="text-xs">
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] text-zinc-500">
+              Temperature: {ksTemperature.toFixed(1)}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={ksTemperature}
+              onChange={(e) => setKsTemperature(parseFloat(e.target.value))}
+              className="w-full accent-cyan-400"
+              data-testid="settings-slider-temperature"
+            />
+            <div className="mt-0.5 flex justify-between text-[9.5px] text-zinc-600">
+              <span>Precise</span>
+              <span>Creative</span>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] text-zinc-500">Max Tokens</label>
+            <input
+              type="number"
+              value={ksMaxTokens}
+              onChange={(e) => {
+                const v = parseInt(e.target.value);
+                if (!isNaN(v) && v > 0) setKsMaxTokens(v);
+              }}
+              className="h-7 w-full rounded border border-white/10 bg-white/[0.03] px-2.5 text-[11.5px] text-zinc-300"
+              data-testid="settings-input-max-tokens"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-white/5 pt-3.5">
+        <h3 className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          <Bot className="h-3 w-3" />
+          Custom Persona
+        </h3>
+        <Textarea
+          value={ksPersona}
+          onChange={(e) => setKsPersona(e.target.value)}
+          placeholder="Give the AI a custom role or personality for this session…"
+          className="min-h-[96px] resize-none border-white/10 bg-white/[0.03] text-[11.5px] text-zinc-300"
+          data-testid="settings-textarea-persona"
+        />
+        <p className="mt-1.5 text-[9.5px] text-zinc-600">
+          Prepended to the system prompt for all messages.
+        </p>
+      </div>
+      <div className="border-t border-white/5 pt-3.5">
+        <h3 className="mb-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+          <Activity className="h-3 w-3" />
+          Current Config
+        </h3>
+        <div className="space-y-1.5 rounded border border-white/5 bg-white/[0.02] p-2.5 text-[11px]">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Provider</span>
+            <span className="text-zinc-300">{effectiveProvider || "Auto"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Model</span>
+            <span className="text-zinc-300">{selectedModel || "Auto"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Temperature</span>
+            <span className="text-zinc-300">{ksTemperature.toFixed(1)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Max Tokens</span>
+            <span className="text-zinc-300">{ksMaxTokens.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Mode</span>
+            <span className="text-zinc-300 capitalize">{editorMode}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Persona</span>
+            <span className="text-zinc-300">{ksPersona ? "Custom" : "Default"}</span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+
   // ── mobile fallback ────────────────────────────────────────────────────────
 
   if (isMobile) return <QuestsWorkspace />;
@@ -1430,10 +1585,41 @@ export default function KeystoneLiteWorkspace() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <button
+                    onClick={() => setSettingsOpen((v) => !v)}
+                    title="AI settings — provider, model, temperature, persona"
+                    data-testid="ksl-settings-toggle"
+                    className={`flex h-6 w-6 items-center justify-center rounded border transition-colors ${
+                      settingsOpen
+                        ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-300"
+                        : "border-white/10 bg-white/[0.03] text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
 
-              {/* messages */}
+              {/* settings panel swaps in over the message list when open —
+                  desktop parity with QuestsWorkspace's settings tab. */}
+              <AnimatePresence initial={false}>
+                {settingsOpen && (
+                  <motion.div
+                    key="ksl-settings"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex min-h-0 flex-1 flex-col border-b border-white/5 bg-[#0a0a0f]"
+                    data-testid="ksl-settings-panel"
+                  >
+                    {renderSettingsContent()}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* messages — hidden while the settings panel is open so settings
+                  fully replaces the message view (QW tab parity). */}
+              {!settingsOpen && (
               <div
                 ref={chatScrollRef}
                 onScroll={onChatScroll}
@@ -1609,6 +1795,7 @@ export default function KeystoneLiteWorkspace() {
                 ))}
                 <div ref={chatEndRef} />
               </div>
+              )}
 
               {/* applied-changes strip: auto-apply stays on, this is the undo */}
               {Object.keys(agentChanges).length > 0 && (
