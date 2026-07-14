@@ -77,6 +77,7 @@ interface TermResult {
   stderr?: string;
   exit_code?: number;
   duration_ms?: number;
+  cwd?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -182,7 +183,9 @@ export default function KeystoneLiteWorkspace() {
     "connecting" | "ready" | "error"
   >("connecting");
   const runtimeRef = useRef<RuntimeSession | null>(null);
-  const [termLang, setTermLang] = useState<"python" | "node">("python");
+  const [termLang, setTermLang] = useState<"shell" | "python" | "node">("shell");
+  // shell mode: workspace-relative cwd persists between lines (lite parity)
+  const [termCwd, setTermCwd] = useState(".");
   const [termCode, setTermCode] = useState("");
   const [termOutput, setTermOutput] = useState<TermResult | null>(null);
   const [termRunning, setTermRunning] = useState(false);
@@ -243,6 +246,7 @@ export default function KeystoneLiteWorkspace() {
     // environment, workspace sync is awaited before ready, and every
     // execution self-heals one 409 (destroy → recreate → sync → retry).
     runtimeRef.current?.dispose();
+    setTermCwd(".");
     const rs = new RuntimeSession(envId!, (status, sessionId) => {
       setRuntimeStatus(status);
       setRuntimeSessionId(sessionId);
@@ -742,7 +746,16 @@ export default function KeystoneLiteWorkspace() {
     setTermRunning(true);
     setTermOutput(null);
     try {
-      setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
+      if (termLang === "shell") {
+        // lite parity: cwd marker rides every line — `cd` persists, runtime
+        // host paths are scrubbed to /workspace before display
+        const r = await rs.runShell(termCode, termCwd);
+        setTermCwd(r.cwd || ".");
+        setTermOutput(r as TermResult);
+        setTermCode("");
+      } else {
+        setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
+      }
     } catch (e) {
       setTermOutput({
         stdout: "",
@@ -1121,7 +1134,7 @@ export default function KeystoneLiteWorkspace() {
                       Terminal
                     </span>
                     <div className="ml-2 flex overflow-hidden rounded border border-white/10 text-[10.5px]">
-                      {(["python", "node"] as const).map((l) => (
+                      {(["shell", "python", "node"] as const).map((l) => (
                         <button
                           key={l}
                           onClick={() => setTermLang(l)}
@@ -1136,6 +1149,11 @@ export default function KeystoneLiteWorkspace() {
                         </button>
                       ))}
                     </div>
+                    {termLang === "shell" && (
+                      <span className="font-mono text-[10px] text-emerald-400/70" data-testid="ksl-term-cwd">
+                        ~/workspace{termCwd === "." ? "" : `/${termCwd}`} $
+                      </span>
+                    )}
                     <div className="ml-auto flex items-center gap-1.5">
                       <div className="flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5">
                         <Package className="h-3 w-3 text-zinc-500" />
@@ -1190,10 +1208,18 @@ export default function KeystoneLiteWorkspace() {
                     <textarea
                       value={termCode}
                       onChange={(e) => setTermCode(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (termLang === "shell" && e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          runCode();
+                        }
+                      }}
                       placeholder={
-                        termLang === "python"
-                          ? '# python code…\nprint("hello")'
-                          : '// node code…\nconsole.log("hello")'
+                        termLang === "shell"
+                          ? "$ shell — cd persists between runs\nls -la"
+                          : termLang === "python"
+                            ? '# python code…\nprint("hello")'
+                            : '// node code…\nconsole.log("hello")'
                       }
                       spellCheck={false}
                       className="h-full resize-none border-r border-white/5 bg-transparent p-2.5 font-mono text-[11.5px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none"
