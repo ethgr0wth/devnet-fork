@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/queryClient";
+import { RuntimeSession } from "@/lib/runtimeSession";
 import { toast } from "sonner";
 import { useAvailableModels } from "@/hooks/use-available-models";
 import QuestsWorkspace from "./QuestsWorkspace";
@@ -171,6 +172,7 @@ export default function KeystoneLiteWorkspace() {
   const [runtimeStatus, setRuntimeStatus] = useState<
     "connecting" | "ready" | "error"
   >("connecting");
+  const runtimeRef = useRef<RuntimeSession | null>(null);
   const [termLang, setTermLang] = useState<"python" | "node">("python");
   const [termCode, setTermCode] = useState("");
   const [termOutput, setTermOutput] = useState<TermResult | null>(null);
@@ -228,40 +230,19 @@ export default function KeystoneLiteWorkspace() {
   }, [envId]);
 
   const initRuntime = useCallback(async () => {
-    setRuntimeStatus("connecting");
+    // Keystone-Lite parity: sessions are adopted only when bound to THIS
+    // environment, workspace sync is awaited before ready, and every
+    // execution self-heals one 409 (destroy → recreate → sync → retry).
+    runtimeRef.current?.dispose();
+    const rs = new RuntimeSession(envId!, (status, sessionId) => {
+      setRuntimeStatus(status);
+      setRuntimeSessionId(sessionId);
+    });
+    runtimeRef.current = rs;
     try {
-      let sessionId: string | null = null;
-      const listRes = await apiFetch("/api/runtime/sessions");
-      if (listRes.ok) {
-        const d = await listRes.json();
-        if (d.sessions?.length > 0) sessionId = d.sessions[0].session_id;
-      }
-      if (!sessionId) {
-        const createRes = await apiFetch("/api/runtime/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ environment_id: envId }),
-        });
-        if (!createRes.ok) {
-          setRuntimeStatus("error");
-          return;
-        }
-        sessionId = (await createRes.json()).session_id;
-      }
-      if (sessionId) {
-        setRuntimeSessionId(sessionId);
-        setRuntimeStatus("ready");
-        apiFetch("/api/runtime/sync_workspace", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: sessionId,
-            environment_id: envId,
-          }),
-        }).catch(() => {});
-      }
+      await rs.bind();
     } catch {
-      setRuntimeStatus("error");
+      /* status already shows the failure; file editing still works */
     }
   }, [envId]);
 
@@ -272,6 +253,8 @@ export default function KeystoneLiteWorkspace() {
     loadChatHistory();
     initRuntime();
   }, [envId, isMobile, loadEnvironment, loadFileTree, loadChatHistory, initRuntime]);
+
+  useEffect(() => () => runtimeRef.current?.dispose(), []);
 
   // ── editor actions ─────────────────────────────────────────────────────────
 
@@ -694,42 +677,29 @@ export default function KeystoneLiteWorkspace() {
   // ── terminal ───────────────────────────────────────────────────────────────
 
   const runCode = async () => {
-    if (!runtimeSessionId || termRunning || !termCode.trim()) return;
+    const rs = runtimeRef.current;
+    if (!rs || termRunning || !termCode.trim()) return;
     setTermRunning(true);
     setTermOutput(null);
     try {
-      const res = await apiFetch("/api/runtime/run_code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: runtimeSessionId,
-          language: termLang,
-          code: termCode,
-          environment_id: envId,
-        }),
-      });
-      setTermOutput(await res.json());
+      setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
     } catch (e) {
-      setTermOutput({ stdout: "", stderr: String(e), exit_code: -1 });
+      setTermOutput({
+        stdout: "",
+        stderr: e instanceof Error ? e.message : String(e),
+        exit_code: -1,
+      });
     } finally {
       setTermRunning(false);
     }
   };
 
   const installPackage = async () => {
-    if (!runtimeSessionId || !pkgName.trim() || pkgInstalling) return;
+    const rs = runtimeRef.current;
+    if (!rs || !pkgName.trim() || pkgInstalling) return;
     setPkgInstalling(true);
     try {
-      const res = await apiFetch("/api/runtime/install_package", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: runtimeSessionId,
-          ecosystem: pkgEco,
-          package: pkgName.trim(),
-        }),
-      });
-      const d = await res.json();
+      const d = await rs.installPackage(pkgEco, pkgName.trim());
       toast.success(`Package ${d.package || pkgName.trim()} recorded (${d.ecosystem || pkgEco})`);
       setPkgName("");
     } catch {
