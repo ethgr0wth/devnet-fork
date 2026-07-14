@@ -1509,33 +1509,53 @@ export default function KeystoneLiteWorkspace() {
                               // lite parity (ChatPanel.renderMessageContent):
                               // sentinel blocks never render raw — they become
                               // the Surgical Edits card; prose renders clean.
-                              const { edits, explanation } = parseSurgicalEdits(m.content);
+                              const { edits, explanation, inProgressFile } =
+                                parseSurgicalEdits(m.content);
                               const clean = stripPartialSentinels(explanation);
                               const pending = (m.filesTouched || []).some(
                                 (f) => f in pendingReview
                               );
-                              const applied = chatMode === "keystone" || !pending;
+                              const streaming =
+                                !!inProgressFile || edits.some((e) => e.partial);
+                              const applied =
+                                !streaming && (chatMode === "keystone" || !pending);
                               return (
                                 <>
-                                  {edits.length > 0 && (
+                                  {(edits.length > 0 || inProgressFile) && (
                                     <div
                                       className={`mb-2 rounded border px-2 py-1.5 ${
-                                        applied
-                                          ? "border-emerald-500/25 bg-emerald-500/[0.06]"
-                                          : "border-amber-500/25 bg-amber-500/[0.06]"
+                                        streaming
+                                          ? "border-cyan-500/25 bg-cyan-500/[0.06]"
+                                          : applied
+                                            ? "border-emerald-500/25 bg-emerald-500/[0.06]"
+                                            : "border-amber-500/25 bg-amber-500/[0.06]"
                                       }`}
                                       data-testid="ksl-edits-card"
                                     >
                                       <div
                                         className={`mb-1 font-mono text-[9.5px] uppercase tracking-[0.15em] ${
-                                          applied ? "text-emerald-300" : "text-amber-300"
+                                          streaming
+                                            ? "animate-pulse text-cyan-300"
+                                            : applied
+                                              ? "text-emerald-300"
+                                              : "text-amber-300"
                                         }`}
                                       >
-                                        {applied
-                                          ? "Applied"
-                                          : "Surgical edits — review below"}{" "}
-                                        ({edits.length})
+                                        {streaming
+                                          ? "Editing — streaming"
+                                          : applied
+                                            ? "Applied"
+                                            : "Surgical edits — review below"}{" "}
+                                        ({edits.length || 1})
                                       </div>
+                                      {inProgressFile &&
+                                        !edits.some((e) => e.partial) && (
+                                          <div className="flex animate-pulse items-center gap-1.5 font-mono text-[10px] text-cyan-300/80">
+                                            <FileCode className="h-2.5 w-2.5 shrink-0" />
+                                            <span className="truncate">{inProgressFile}</span>
+                                            <span className="text-zinc-500">receiving edit…</span>
+                                          </div>
+                                        )}
                                       {edits.map((ed, i) => (
                                         <div
                                           key={`${ed.file}-${i}`}
@@ -1549,7 +1569,9 @@ export default function KeystoneLiteWorkspace() {
                                           >
                                             {ed.file}
                                           </button>
-                                          <span className="shrink-0 text-zinc-600">
+                                          <span
+                                            className={`shrink-0 ${ed.partial ? "animate-pulse text-cyan-400/80" : "text-zinc-600"}`}
+                                          >
                                             {ed.type === "replace"
                                               ? `replace ${ed.startLine}–${ed.endLine ?? ed.startLine}`
                                               : ed.type === "insert"
@@ -1559,6 +1581,7 @@ export default function KeystoneLiteWorkspace() {
                                                   : ed.type === "create"
                                                     ? "new file"
                                                     : "full write"}
+                                            {ed.partial ? " · writing…" : ""}
                                           </span>
                                         </div>
                                       ))}
