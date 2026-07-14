@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import AppWindow, { type WindowState } from "./AppWindow";
 import { PromptPortalHome } from "./PromptPortalHome";
+import { LicenseGate } from "./LicenseGate";
 import { aias } from "../aias";
 import { Toaster } from "sonner";
 import { Toaster as ShadToaster } from "../v1/components/ui/toaster";
@@ -420,6 +421,12 @@ function AiosShell({ opts }: { opts: AiosOpts }) {
           <LogOut className="h-4 w-4" />
         </button>
       </div>
+
+      {/* license gate — v1 Dashboard parity: a non-blocking activation banner
+          shown when the caller has no active license (or sub is grace/expired).
+          Sits on the AiOS main surface so it's always visible; the desktop
+          stays usable underneath. Loads /api/licenses/me + /api/subscription. */}
+      <LicenseGate />
 
       {/* prompt-first v3 stage; existing apps still mount as native windows */}
       <div className="relative min-h-0 flex-1">
