@@ -109,9 +109,11 @@ export function LicenseGate({
         !li?.has_license || licenseInactive || subNeedsRenewal;
       setGateState(showInput ? "gate" : "ok");
     } catch {
-      // Never hard-block the desktop on a license probe failure — v1 treats a
-      // failed /api/licenses/me as "no data", not "locked out". Same here.
-      setGateState("ok");
+      // A license gate that vanishes on a probe failure defeats its purpose.
+      // If we can't confirm an active license, the safe default is to SHOW the
+      // activation prompt — never silently assume "ok". (The desktop still
+      // stays usable underneath; this is a banner, not a hard wall.)
+      setGateState("gate");
     }
   }, []);
 
