@@ -25,6 +25,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
+import { registerPortalTarget, isPortalBarMounted, subscribePortalBus } from "../../aios/portalBus";
 import {
   ChevronLeft, ChevronRight, ChevronDown, Send, File, Folder, FolderOpen,
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
@@ -195,6 +196,27 @@ export default function KeystoneLiteWorkspace() {
     useAvailableModels();
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("auto");
+
+  // single-prompt bus: KeyStone (desktop) is a portal target. Keeps its
+  // mode/model/read-write chips but surrenders its text input to the portal
+  // bar when a bar is mounted (mirrors QuestsWorkspace on mobile).
+  const [portalDriven, setPortalDriven] = useState(isPortalBarMounted());
+  const sendRef = useRef<(t?: string) => void>(() => {});
+  useEffect(() => { sendRef.current = sendMessage; });
+  useEffect(() => subscribePortalBus(() => setPortalDriven(isPortalBarMounted())), []);
+  useEffect(() => {
+    if (isMobile) return; // mobile renders QuestsWorkspace, which registers its own
+    return registerPortalTarget({
+      appId: "keystone",
+      label: envName ? `KeyStone · ${envName}` : "KeyStone",
+      placeholder: readOnlyMode
+        ? "Ask KeyStone about the code…"
+        : editorMode === "focus"
+          ? "Ask KeyStone about docs & architecture…"
+          : "Tell KeyStone what to build…",
+      submit: (t) => sendRef.current?.(t),
+    });
+  }, [envName, editorMode, readOnlyMode, isMobile]);
   const effectiveProvider = selectedProvider || defaultProvider || "";
   const providerModels = effectiveProvider
     ? getModelsForProvider(effectiveProvider)
@@ -612,8 +634,8 @@ export default function KeystoneLiteWorkspace() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   };
 
-  const sendMessage = async () => {
-    const text = chatInput.trim();
+  const sendMessage = async (textArg?: string) => {
+    const text = (textArg ?? chatInput).trim();
     if (!text || sending) return;
     setChatError(null);
     setChatInput("");
@@ -2102,7 +2124,20 @@ export default function KeystoneLiteWorkspace() {
                 </div>
               )}
 
-              {/* composer */}
+              {/* composer — hidden when the portal bar drives this chat */}
+              {portalDriven ? (
+                <div className="shrink-0 border-t border-white/5 p-2">
+                  <div className="flex items-center gap-2 rounded-md border border-dashed border-white/10 bg-white/[0.02] px-2.5 py-2 text-[11px] text-zinc-500" data-testid="ksl-portal-hint">
+                    <Sparkles className="h-3 w-3 shrink-0 text-cyan-400/80" />
+                    <span className="flex-1">Prompt from the portal bar — it drives this KeyStone chat.</span>
+                    {sending && (
+                      <button onClick={stopStream} className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-red-500/15 text-red-400 hover:bg-red-500/25" title="Stop" data-testid="ksl-stop">
+                        <Square className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
               <div className="shrink-0 border-t border-white/5 p-2">
                 <div className="flex items-end gap-1.5 rounded-md border border-white/10 bg-white/[0.03] p-1.5 focus-within:border-cyan-500/40">
                   <textarea
@@ -2131,7 +2166,7 @@ export default function KeystoneLiteWorkspace() {
                     </button>
                   ) : (
                     <button
-                      onClick={sendMessage}
+                      onClick={() => sendMessage()}
                       disabled={!chatInput.trim()}
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 disabled:bg-white/5 disabled:text-zinc-700"
                       title="Send"
@@ -2145,6 +2180,7 @@ export default function KeystoneLiteWorkspace() {
                   Enter to send · Shift+Enter for newline · auto-apply on, revert anytime
                 </div>
               </div>
+              )}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
