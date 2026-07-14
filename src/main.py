@@ -559,6 +559,14 @@ async def bridge_sync_workspaces(request: Request,
         pipeline.set(f"ecosystem:{env_id}", json.dumps(eco))
         pipeline.set(f"ecosystem:slug:{eco['slug']}", env_id)
         pipeline.sadd(f"ecosystem:members:{env_id}", user["id"])
+        # KEY PARITY with the DevOne backfill and /join: /api/ecosystems
+        # lists from user:ecosystems:{uid} — without this index the bridged
+        # twin never appears in the switcher and users land on DevOne.
+        pipeline.sadd(f"user:ecosystems:{user['id']}", env_id)
+        if existing is None:
+            # First syncer created the twin (owner_id above) — admin, same
+            # vocabulary the DevOne backfill grants.
+            pipeline.hset(f"ecosystem:roles:{env_id}", user["id"], "admin")
         pipeline.execute()
         counts["ecosystems"] += 1
 
