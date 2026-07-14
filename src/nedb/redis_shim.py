@@ -51,8 +51,28 @@ def _norm(key_s: str) -> str:
     return key_s[len(ns):] if key_s.startswith(ns) else key_s
 
 
+# NQL reserves these words (rust/nedb-v2/src/nql.rs lexer). A collection whose
+# name IS one of them can be WRITTEN (structured /batch put, no NQL) but never
+# READ: get_doc/query issue `FROM {coll} WHERE …`, and the lexer tokenizes a
+# reserved word as a keyword, so `FROM group …` bails ("expected collection
+# name, got Kw(GROUP)") → zero rows. That silently 404'd every bridged
+# community (key prefix "group:" → collection "group") while its writes
+# persisted — re-created every sync, invisible to /api/groups. Suffixing the
+# reserved name here fixes it for BOTH paths, since this one function derives
+# the collection for every shim read and write.
+_NQL_RESERVED = {
+    "FROM", "AS", "OF", "VALID", "WHERE", "AND", "ORDER", "BY", "DESC",
+    "LIMIT", "GROUP", "COUNT", "SUM", "AVG", "MIN", "MAX", "TRACE",
+    "TRAVERSE", "REVERSE", "SEARCH", "NOT", "NULL", "TRUE", "FALSE",
+}
+
+
 def _coll_of(key_s: str) -> str:
-    return key_s.split(":", 1)[0] if ":" in key_s else "_unrouted"
+    coll = key_s.split(":", 1)[0] if ":" in key_s else "_unrouted"
+    if coll.upper() in _NQL_RESERVED:
+        # "_" is a valid ident char but "group_" is not a keyword → readable.
+        coll += "_"
+    return coll
 
 
 # Envelope/system fields. RULE: every "_"-prefixed key is engine metadata
