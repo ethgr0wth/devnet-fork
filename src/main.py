@@ -660,7 +660,15 @@ _AIAS_TOK_CACHE_S = int(os.environ.get("AIAS_TOKEN_CACHE_S", "300"))
 # Async client for endpoint handlers — upstream slowness must NEVER block
 # the event loop (the 3:43 PM login-502 regression: a shared blocking client
 # wedged the loop once the desktop started fanning calls upstream).
-_aias_ahttp = httpx.AsyncClient(base_url=AIAS_API_BASE, timeout=10.0)
+# Granular timeouts: connect stays tight (dead upstream still fails fast for
+# the governor/502 path), but READ must tolerate SSE gaps — Keystone chat
+# streams pause well past 10s between chunks (LLM thinking, tool rounds,
+# edit application at stream end). A flat timeout=10.0 here was killing live
+# streams mid-body with httpx.ReadTimeout inside StreamingResponse.
+_aias_ahttp = httpx.AsyncClient(
+    base_url=AIAS_API_BASE,
+    timeout=httpx.Timeout(connect=10.0, read=600.0, write=60.0, pool=10.0),
+)
 # Short-timeout sync client ONLY for the cached token resolution inside the
 # synchronous get_current_user path (one call per user per 300s).
 _aias_http = httpx.Client(base_url=AIAS_API_BASE, timeout=6.0)
@@ -7092,9 +7100,23 @@ async def v1_same_origin_proxy(v1_path: str, request: Request):
     res_headers = {k: v for k, v in resp.headers.items()
                    if k.lower() not in _PROXY_SKIP_RES_HEADERS}
 
+    async def _drain():
+        # Mid-stream upstream failures must end the stream cleanly, not as a
+        # traceback-severed socket. For SSE, emit a structured error frame so
+        # the client renders a message instead of a silent cut.
+        try:
+            async for chunk in resp.aiter_raw():
+                yield chunk
+        except httpx.HTTPError as e:
+            print(f"[v1proxy] stream interrupted on {url}: {type(e).__name__}: {e}")
+            if resp.headers.get("content-type", "").startswith("text/event-stream"):
+                frame = {"type": "error",
+                         "error": f"Upstream stream interrupted ({type(e).__name__})"}
+                yield f"data: {json.dumps(frame)}\n\n".encode()
+
     from starlette.background import BackgroundTask
     return StreamingResponse(
-        resp.aiter_raw(),
+        _drain(),
         status_code=resp.status_code,
         headers=res_headers,
         background=BackgroundTask(resp.aclose))
