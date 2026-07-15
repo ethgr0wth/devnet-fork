@@ -2,6 +2,9 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { mountAios, unmountAios } from './aios/AiosShell';
 import { pickLandingEcosystem, ACTIVE_ECOSYSTEM_KEY } from './ecosystem-landing';
+import {
+  normalizeMode, composerPlaceholder, renderOperatorBar, renderDrafts, renderWsSettings,
+} from './aiasConsole';
 
 marked.setOptions({
   breaks: true,
@@ -5626,6 +5629,9 @@ ws.onmessage = (event) => {
   private groupSocket: WebSocket | null = null;
   private groupMessages: any[] = [];
   private currentGroupId: string | null = null;
+  // Bridged-workspace operator console (origin "aias_v1"): v1 config + drafts
+  private aiasWs: any = null;
+  private aiasDrafts: any[] = [];
   private replyingTo: { messageId: string; userId: string; displayName: string; content: string } | null = null;
   private viewingThreadId: string | null = null;
   private isOpeningGroup: boolean = false;
@@ -6349,6 +6355,8 @@ ws.onmessage = (event) => {
               <i data-lucide="settings" class="w-5 h-5 text-emerald-400"></i>
               Group Settings
             </h2>
+            <!-- Bridged AiAS workspace settings (filled in for origin=aias_v1 twins) -->
+            <div id="aias-ws-settings-slot"></div>
             <form id="group-settings-form" class="space-y-4">
               <div class="flex justify-center">
                 <div class="relative">
@@ -6656,6 +6664,8 @@ ws.onmessage = (event) => {
       document.getElementById("group-settings-modal")?.classList.remove("hidden");
       document.getElementById("group-settings-modal")?.classList.add("flex");
       this.loadGroupBotManagement(groupId);
+      // Bridged twin: surface the v1 workspace settings + directives up top.
+      if (this.currentGroup?.origin === "aias_v1") this.refreshAiasSettings(groupId);
     });
     
     // Leave group button
@@ -6781,9 +6791,225 @@ ws.onmessage = (event) => {
     (this as any).loadThreadsList();
     this.attachThreadBadgeListeners();
     this.forceScrollBottom(() => this.setupScrollPagination(groupId));
+
+    // Bridged twin: paint the v1 operator console (mode + drafts) over the room.
+    this.aiasWs = null;
+    this.aiasDrafts = [];
+    if (group.origin === "aias_v1") {
+      await this.mountAiasConsole(groupId);
+    }
     } finally {
       this.isOpeningGroup = false;
     }
+  }
+
+  // ── Bridged-workspace operator console (origin "aias_v1") ──────────────────
+  // A bridged community IS a v1 AiAS workspace. These handlers add the v1
+  // manager controls (mode switch, human reply, shadow drafts, settings,
+  // directives) on top of the proxied history. Every path below is forwarded
+  // to v1 by the devnet catch-all proxy (main.py v1_same_origin_proxy).
+
+  private aiasHeaders(json = false): Record<string, string> {
+    const h: Record<string, string> = { "X-Auth-Hash": this.appState.hash || "" };
+    if (json) h["Content-Type"] = "application/json";
+    return h;
+  }
+
+  /** Fetch v1 config + pending drafts, then paint the operator controls. */
+  private async mountAiasConsole(groupId: string): Promise<void> {
+    try {
+      const [wsRes, drRes] = await Promise.all([
+        fetch(`/api/workspaces/${groupId}`, { headers: this.aiasHeaders() }),
+        fetch(`/api/workspaces/${groupId}/drafts`, { headers: this.aiasHeaders() }),
+      ]);
+      this.aiasWs = wsRes.ok ? ((await wsRes.json()).workspace || {}) : {};
+      this.aiasDrafts = drRes.ok ? ((await drRes.json()).drafts || []) : [];
+    } catch {
+      this.aiasWs = this.aiasWs || {};
+      this.aiasDrafts = [];
+    }
+    this.renderAiasConsole(groupId);
+  }
+
+  /** (Re)paint the operator bar (+ shadow drafts) directly above the composer. */
+  private renderAiasConsole(groupId: string): void {
+    const form = document.getElementById("send-message-form") as HTMLFormElement | null;
+    const composerWrap = form?.parentElement;
+    if (!form || !composerWrap) return;
+    const mode = normalizeMode(this.aiasWs?.mode);
+
+    let slot = document.getElementById("aias-console-slot");
+    if (!slot) {
+      slot = document.createElement("div");
+      slot.id = "aias-console-slot";
+      composerWrap.insertBefore(slot, form);
+    }
+    slot.innerHTML = renderOperatorBar(mode) + (mode === "shadow" ? renderDrafts(this.aiasDrafts) : "");
+
+    const input = form.querySelector('input[name="content"]') as HTMLInputElement | null;
+    if (input) input.placeholder = composerPlaceholder(mode);
+
+    if ((window as any).lucide) (window as any).lucide.createIcons();
+    this.bindAiasConsole(groupId);
+  }
+
+  private bindAiasConsole(groupId: string): void {
+    const slot = document.getElementById("aias-console-slot");
+    if (!slot) return;
+
+    slot.querySelectorAll(".aias-mode-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const mode = (btn as HTMLElement).dataset.wsMode;
+        if (mode && normalizeMode(this.aiasWs?.mode) !== mode) await this.aiasSetMode(groupId, mode);
+      });
+    });
+    slot.querySelectorAll(".aias-draft-approve").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = (btn as HTMLElement).dataset.draftId!;
+        const card = slot.querySelector(`.aias-draft[data-draft-id="${id}"]`);
+        const edited = (card?.querySelector(".aias-draft-text") as HTMLTextAreaElement | null)?.value;
+        await this.aiasDraftAction(groupId, `drafts/${id}/approve`, { edited_content: edited });
+      });
+    });
+    slot.querySelectorAll(".aias-draft-reject").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await this.aiasDraftAction(groupId, `drafts/${(btn as HTMLElement).dataset.draftId}/reject`, null);
+      });
+    });
+    slot.querySelectorAll(".aias-draft-regen").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const directive = window.prompt("How should the assistant revise this draft?");
+        if (!directive) return;
+        await this.aiasDraftAction(groupId, `drafts/${(btn as HTMLElement).dataset.draftId}/regenerate`, { directive });
+      });
+    });
+  }
+
+  private async aiasSetMode(groupId: string, mode: string): Promise<void> {
+    const res = await fetch(`/api/workspaces/${groupId}`, {
+      method: "PATCH", headers: this.aiasHeaders(true), body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) { console.error("Failed to switch workspace mode:", res.status); return; }
+    const data = await res.json().catch(() => ({} as any));
+    this.aiasWs = data.workspace || { ...(this.aiasWs || {}), mode };
+    if (normalizeMode(mode) === "shadow") await this.aiasReloadDrafts(groupId);
+    this.renderAiasConsole(groupId);
+    this.refreshAiasSettings(groupId);
+  }
+
+  private async aiasReloadDrafts(groupId: string): Promise<void> {
+    try {
+      const r = await fetch(`/api/workspaces/${groupId}/drafts`, { headers: this.aiasHeaders() });
+      this.aiasDrafts = r.ok ? ((await r.json()).drafts || []) : [];
+    } catch { this.aiasDrafts = []; }
+  }
+
+  private async aiasDraftAction(groupId: string, path: string, body: any): Promise<void> {
+    const res = await fetch(`/api/workspaces/${path}`, {
+      method: "POST", headers: this.aiasHeaders(!!body),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) { console.error("Draft action failed:", path, res.status); return; }
+    await this.aiasReloadDrafts(groupId);
+    this.renderAiasConsole(groupId);
+    await this.refreshBridgedMessages(groupId);
+  }
+
+  /** Re-fetch the proxied v1 history and repaint the message list. */
+  private async refreshBridgedMessages(groupId: string): Promise<void> {
+    try {
+      const r = await fetch(`/api/groups/${groupId}/messages`, { headers: this.aiasHeaders() });
+      if (!r.ok) return;
+      const data = await r.json();
+      this.groupMessages = Array.isArray(data.messages) ? data.messages : [];
+      const container = document.getElementById("messages-container");
+      if (container) {
+        container.innerHTML = this.renderMessages();
+        this.attachMsgReactionListeners();
+        this.scrollToBottom();
+      }
+    } catch { /* keep existing render on transient failure */ }
+  }
+
+  /** Fill the settings-modal slot with the v1 workspace settings + directives. */
+  private async refreshAiasSettings(groupId: string): Promise<void> {
+    const slot = document.getElementById("aias-ws-settings-slot");
+    if (!slot) return;
+    let directives: any[] = [];
+    try {
+      const r = await fetch(`/api/workspaces/${groupId}/directives`, { headers: this.aiasHeaders() });
+      if (r.ok) directives = (await r.json()).directives || [];
+    } catch { /* directives are best-effort */ }
+    slot.innerHTML = `<div class="mb-6 pb-6 border-b border-zinc-700">
+        <h3 class="text-sm font-bold text-zinc-300 mb-3 flex items-center gap-2">
+          <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i> Workspace (AiAS)
+        </h3>
+        ${renderWsSettings(this.aiasWs || {}, directives)}
+      </div>`;
+    if ((window as any).lucide) (window as any).lucide.createIcons();
+    this.bindAiasSettings(groupId);
+  }
+
+  private bindAiasSettings(groupId: string): void {
+    const slot = document.getElementById("aias-ws-settings-slot");
+    if (!slot) return;
+
+    const patchField = async (field: string, value: any) => {
+      const res = await fetch(`/api/workspaces/${groupId}`, {
+        method: "PATCH", headers: this.aiasHeaders(true), body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) { console.error("Failed to update workspace setting:", field, res.status); return; }
+      const data = await res.json().catch(() => ({} as any));
+      this.aiasWs = data.workspace || { ...(this.aiasWs || {}), [field]: value };
+      this.renderAiasConsole(groupId);
+    };
+
+    slot.querySelectorAll(".aias-mode-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const mode = (btn as HTMLElement).dataset.wsMode;
+        if (mode) await this.aiasSetMode(groupId, mode);
+      });
+    });
+    slot.querySelectorAll(".aias-ws-toggle").forEach((el) => {
+      el.addEventListener("change", () =>
+        patchField((el as HTMLElement).dataset.wsField!, (el as HTMLInputElement).checked));
+    });
+    slot.querySelectorAll(".aias-ws-select").forEach((el) => {
+      el.addEventListener("change", () =>
+        patchField((el as HTMLElement).dataset.wsField!, (el as HTMLSelectElement).value));
+    });
+    slot.querySelectorAll(".aias-ws-number").forEach((el) => {
+      el.addEventListener("change", () => {
+        const n = parseInt((el as HTMLInputElement).value, 10);
+        if (Number.isFinite(n)) patchField((el as HTMLElement).dataset.wsField!, Math.max(1, Math.min(50, n)));
+      });
+    });
+    slot.querySelectorAll(".aias-ws-text").forEach((el) => {
+      el.addEventListener("change", () =>
+        patchField((el as HTMLElement).dataset.wsField!, (el as HTMLInputElement).value));
+    });
+    slot.querySelectorAll(".aias-dir-toggle").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = (btn as HTMLElement).dataset.directiveId!;
+        const active = (btn as HTMLElement).dataset.active === "1";
+        await fetch(`/api/directives/${id}`, {
+          method: "PATCH", headers: this.aiasHeaders(true), body: JSON.stringify({ is_active: !active }),
+        });
+        await this.refreshAiasSettings(groupId);
+      });
+    });
+    const addForm = slot.querySelector(".aias-directive-add") as HTMLFormElement | null;
+    addForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = addForm.querySelector('input[name="content"]') as HTMLInputElement;
+      const content = input.value.trim();
+      if (!content) return;
+      input.value = "";
+      await fetch(`/api/workspaces/${groupId}/directives`, {
+        method: "POST", headers: this.aiasHeaders(true), body: JSON.stringify({ content, type: "guidance" }),
+      });
+      await this.refreshAiasSettings(groupId);
+    });
   }
 
   private async saveGroupSettings(groupId: string): Promise<void> {
@@ -7454,6 +7680,21 @@ ws.onmessage = (event) => {
     
     if (!content && !this.pendingChatImageUrl) return;
     if (!this.currentGroup) return;
+
+    // Bridged twin: the composer is the operator's HUMAN reply into the v1
+    // workspace (POST /admin-message), mirroring the v1 manager console. Mode
+    // (ai/shadow/takeover) governs what the assistant does with the client's
+    // turns and is controlled by the operator bar, not the composer.
+    if (this.currentGroup.origin === "aias_v1") {
+      if (!content) return;
+      input.value = "";
+      const res = await fetch(`/api/workspaces/${this.currentGroup.id}/admin-message`, {
+        method: "POST", headers: this.aiasHeaders(true), body: JSON.stringify({ content }),
+      });
+      if (res.ok) await this.refreshBridgedMessages(this.currentGroup.id);
+      else console.error("Failed to send human reply:", res.status);
+      return;
+    }
 
     let replyToData: any = null;
     if (this.replyingTo) {
