@@ -173,15 +173,12 @@ function toolMeta(name: string) {
   return TOOL_META[name] || { icon: Cpu, label: () => name || "Running tool" };
 }
 
-// The one tool whose live activity also gets mirrored into the Terminal
-// panel's output transcript (not just the chat's tool-call card) — see the
-// termHistory wiring below. Scoped to run_command only: it's the direct
-// analog of what a human types into this SAME terminal, so seeing it there
-// too (not just in chat) is the point. start_app/stop_app/get_logs stay
-// chat-card-only for now — mirroring those would mean parsing their
-// free-text result strings client-side, which is a separate, more fragile
-// problem this doesn't attempt to solve.
-const TERMINAL_MIRROR_TOOLS = new Set(["run_command"]);
+// The tools whose live activity also gets mirrored into the Terminal panel
+// (not just the chat's tool-call card) — matches the backend's own
+// _RUNTIME_FACING_TOOLS exactly (aias api/routes/quests.py): the 4 tools
+// that act on this environment's runtime/process, as opposed to files or
+// the web. See the termHistory wiring below.
+const TERMINAL_MIRROR_TOOLS = new Set(["run_command", "start_app", "stop_app", "get_logs"]);
 
 // ── component ────────────────────────────────────────────────────────────────
 
@@ -846,25 +843,61 @@ export default function KeystoneLiteWorkspace() {
                 // most one pending AGENT entry exists at a time (strict
                 // call→result order server-side), so "last pending agent
                 // entry" always means this result.
+                const hasStructuredExtra =
+                  typeof data.cwd === "string" ||
+                  typeof data.exit_code !== "undefined" ||
+                  typeof data.output !== "undefined" ||
+                  typeof data.status === "string" ||
+                  typeof data.stopped === "boolean";
                 setTermHistory((prev) => {
                   const idx = prev
                     .map((e) => e.source === "agent" && e.pending)
                     .lastIndexOf(true);
                   if (idx === -1) return prev;
                   const next = prev.slice();
-                  next[idx] = {
-                    ...next[idx],
-                    pending: false,
-                    result: {
+                  let result: TermResult;
+                  if (!hasStructuredExtra) {
+                    // The tool errored before producing any structured
+                    // result (e.g. no runtime session yet) — data.preview
+                    // is ALWAYS populated regardless of success/failure, so
+                    // that's still shown instead of a silently blank entry.
+                    result = { stderr: data.preview || "Command failed." };
+                  } else if (data.name === "run_command") {
+                    result = {
                       stdout: data.stdout ?? "",
                       stderr: data.stderr ?? "",
-                      exit_code: data.exit_code ?? null,
+                      exit_code: data.exit_code ?? undefined,
                       cwd: data.cwd,
-                    },
-                  };
+                    };
+                  } else if (data.name === "get_logs") {
+                    result = {
+                      stdout: Array.isArray(data.output) ? data.output.join("\n") : "",
+                      stderr: Array.isArray(data.errors) ? data.errors.join("\n") : "",
+                    };
+                  } else {
+                    // start_app / stop_app: the preview text IS the point —
+                    // shown as-is, not parsed for values (see the appInfo
+                    // update just below, which uses the structured fields).
+                    result = { stdout: data.preview || "" };
+                  }
+                  next[idx] = { ...next[idx], pending: false, result };
                   return next;
                 });
-                if (typeof data.cwd === "string") setTermCwd(data.cwd);
+                if (data.name === "run_command" && typeof data.cwd === "string") {
+                  setTermCwd(data.cwd);
+                }
+              }
+              // App status row: driven ONLY by these structured fields,
+              // never by re-deriving values from the human-readable preview
+              // text — same contract the existing /run and /stop HTTP
+              // routes already hand to startApp()/stopApp() below.
+              if (data.name === "start_app" && typeof data.status === "string") {
+                setAppRunning(true);
+                setAppInfo({ port: data.port ?? null, command: data.command, preview_url: data.preview_url });
+              }
+              if (data.name === "stop_app" && typeof data.stopped === "boolean") {
+                setAppRunning(false);
+                setAppInfo(null);
               }
               break;
             case "file_written":
