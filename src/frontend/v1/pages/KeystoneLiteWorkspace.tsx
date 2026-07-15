@@ -31,7 +31,7 @@ import {
   Save, X, Play, Square, Loader2, Terminal, RefreshCw, Search, Package,
   Zap, Bot, User, FileCode, FileJson, FileText, Trash2, Plus, Circle,
   RotateCcw, CheckCircle2, Cpu, MessageSquare, Eye, Pencil,
-  Settings, Sparkles, Activity, Download,
+  Settings, Sparkles, Activity, Download, Globe, Link2, ScrollText, History,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -95,6 +95,20 @@ interface TermResult {
   cwd?: string;
 }
 
+// One line of terminal scrollback. "agent" entries arrive from the SAME
+// SSE stream driving the chat (a run_command tool call) — the backend runs
+// the command exactly once; this is a second render of that one result, not
+// a second execution. "pending" is true from the moment the tool_call event
+// arrives until its matching tool_result fills the entry in, so the agent's
+// commands feel live the same way a human's own "running…" state does.
+interface TermEntry {
+  id: string;
+  source: "human" | "agent";
+  label: string;
+  pending?: boolean;
+  result?: TermResult;
+}
+
 // Saved KeyStone artifact (parity with QuestsWorkspace's KSArtifact).
 interface KSArtifact {
   id: string;
@@ -145,11 +159,29 @@ const TOOL_META: Record<
   glob_files: { icon: FolderOpen, label: (a) => `Finding files matching ${a?.pattern || ""}` },
   list_functions: { icon: Activity, label: (a) => `Analyzing ${a?.path || "file"}` },
   clone_repo: { icon: Download, label: (a) => `Cloning ${a?.url || "repository"}` },
+  // Keystone-Lite tool parity (backend: aias api/routes/quests.py KEYSTONE_IDE_TOOLS)
+  tavily_search: { icon: Globe, label: (a) => `Searching the web for "${a?.query || ""}"` },
+  web_scrape: { icon: Link2, label: (a) => `Reading ${a?.url || "a page"}` },
+  run_command: { icon: Terminal, label: (a) => `Running \`${a?.command || ""}\`` },
+  start_app: { icon: Play, label: (a) => `Starting \`${a?.command || "the app"}\`` },
+  stop_app: { icon: Square, label: () => "Stopping the app" },
+  get_logs: { icon: ScrollText, label: () => "Reading app logs" },
+  recall_context: { icon: History, label: (a) => `Recalling "${a?.query || ""}" from earlier` },
 };
 
 function toolMeta(name: string) {
   return TOOL_META[name] || { icon: Cpu, label: () => name || "Running tool" };
 }
+
+// The one tool whose live activity also gets mirrored into the Terminal
+// panel's output transcript (not just the chat's tool-call card) — see the
+// termHistory wiring below. Scoped to run_command only: it's the direct
+// analog of what a human types into this SAME terminal, so seeing it there
+// too (not just in chat) is the point. start_app/stop_app/get_logs stay
+// chat-card-only for now — mirroring those would mean parsing their
+// free-text result strings client-side, which is a separate, more fragile
+// problem this doesn't attempt to solve.
+const TERMINAL_MIRROR_TOOLS = new Set(["run_command"]);
 
 // ── component ────────────────────────────────────────────────────────────────
 
@@ -220,6 +252,7 @@ export default function KeystoneLiteWorkspace() {
   const autoScrollRef = useRef(true);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const termEndRef = useRef<HTMLDivElement>(null);
 
   // models / provider
   const { providers, provider: defaultProvider, getModelsForProvider } =
@@ -369,7 +402,10 @@ export default function KeystoneLiteWorkspace() {
   // shell mode: workspace-relative cwd persists between lines (lite parity)
   const [termCwd, setTermCwd] = useState(".");
   const [termCode, setTermCode] = useState("");
-  const [termOutput, setTermOutput] = useState<TermResult | null>(null);
+  // Scrollback transcript — human-typed runs AND mirrored agent run_command
+  // calls, oldest first. See TermEntry above for why "agent" entries don't
+  // mean double execution.
+  const [termHistory, setTermHistory] = useState<TermEntry[]>([]);
   const [termRunning, setTermRunning] = useState(false);
   const [pkgEco, setPkgEco] = useState<"pip" | "npm">("pip");
   const [pkgName, setPkgName] = useState("");
@@ -781,6 +817,16 @@ export default function KeystoneLiteWorkspace() {
                 toolCalls: [...(m.toolCalls || []), call],
                 toolActive: true,
               }));
+              // run_command ALSO shows up in the Terminal panel — the same
+              // single server-side execution result, rendered in a second
+              // place, not run twice. See TERMINAL_MIRROR_TOOLS.
+              if (TERMINAL_MIRROR_TOOLS.has(call.name)) {
+                pushTermEntry({
+                  source: "agent",
+                  label: toolMeta(call.name).label(call.arguments),
+                  pending: true,
+                });
+              }
               break;
             }
             case "tool_result":
@@ -795,6 +841,31 @@ export default function KeystoneLiteWorkspace() {
                 next[idx] = { ...next[idx], status: "done", preview: data.preview };
                 return { ...m, toolCalls: next, toolActive: false };
               });
+              if (data.name && TERMINAL_MIRROR_TOOLS.has(data.name)) {
+                // Same correlation rule as the chat's toolCalls array: at
+                // most one pending AGENT entry exists at a time (strict
+                // call→result order server-side), so "last pending agent
+                // entry" always means this result.
+                setTermHistory((prev) => {
+                  const idx = prev
+                    .map((e) => e.source === "agent" && e.pending)
+                    .lastIndexOf(true);
+                  if (idx === -1) return prev;
+                  const next = prev.slice();
+                  next[idx] = {
+                    ...next[idx],
+                    pending: false,
+                    result: {
+                      stdout: data.stdout ?? "",
+                      stderr: data.stderr ?? "",
+                      exit_code: data.exit_code ?? null,
+                      cwd: data.cwd,
+                    },
+                  };
+                  return next;
+                });
+                if (typeof data.cwd === "string") setTermCwd(data.cwd);
+              }
               break;
             case "file_written":
             case "file_edited":
@@ -928,27 +999,46 @@ export default function KeystoneLiteWorkspace() {
 
   // ── terminal ───────────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    termEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [termHistory]);
+
+  const pushTermEntry = (entry: Omit<TermEntry, "id">): string => {
+    const id = `term-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setTermHistory((prev) => [...prev, { ...entry, id }]);
+    return id;
+  };
+
+  const updateTermEntry = (id: string, patch: Partial<TermEntry>) => {
+    setTermHistory((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  };
+
   const runCode = async () => {
     const rs = runtimeRef.current;
     if (!rs || termRunning || !termCode.trim()) return;
+    const command = termCode;
     setTermRunning(true);
-    setTermOutput(null);
+    const entryId = pushTermEntry({
+      source: "human",
+      label: termLang === "shell" ? `$ ${command}` : command,
+      pending: true,
+    });
     try {
       if (termLang === "shell") {
         // lite parity: cwd marker rides every line — `cd` persists, runtime
         // host paths are scrubbed to /workspace before display
-        const r = await rs.runShell(termCode, termCwd);
+        const r = await rs.runShell(command, termCwd);
         setTermCwd(r.cwd || ".");
-        setTermOutput(r as TermResult);
+        updateTermEntry(entryId, { pending: false, result: r as TermResult });
         setTermCode("");
       } else {
-        setTermOutput((await rs.runCode(termLang, termCode)) as TermResult);
+        const r = await rs.runCode(termLang, command);
+        updateTermEntry(entryId, { pending: false, result: r as TermResult });
       }
     } catch (e) {
-      setTermOutput({
-        stdout: "",
-        stderr: e instanceof Error ? e.message : String(e),
-        exit_code: -1,
+      updateTermEntry(entryId, {
+        pending: false,
+        result: { stdout: "", stderr: e instanceof Error ? e.message : String(e), exit_code: -1 },
       });
     } finally {
       setTermRunning(false);
@@ -1015,7 +1105,7 @@ export default function KeystoneLiteWorkspace() {
         `/api/keystone/environments/${envId}/logs?lines=120`
       ).then((r) => r.json());
       const logs = Array.isArray(r.logs) ? r.logs.join("\n") : String(r.logs ?? "");
-      setTermOutput({ stdout: logs || "(no app logs yet)" });
+      pushTermEntry({ source: "human", label: "app logs", result: { stdout: logs || "(no app logs yet)" } });
     } catch {
       toast.error("Could not fetch app logs");
     }
@@ -1739,38 +1829,47 @@ export default function KeystoneLiteWorkspace() {
                       className="h-full resize-none border-r border-white/5 bg-transparent p-2.5 font-mono text-[11.5px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none"
                       data-testid="ksl-term-code"
                     />
-                    <div className="min-h-0 overflow-y-auto p-2.5 font-mono text-[11.5px]" data-testid="ksl-term-output">
-                      {termRunning && (
-                        <div className="flex items-center gap-2 text-zinc-500">
-                          <Loader2 className="h-3 w-3 animate-spin" /> running…
-                        </div>
-                      )}
-                      {!termRunning && !termOutput && (
+                    <div className="min-h-0 overflow-y-auto p-2.5 font-mono text-[11.5px] space-y-2.5" data-testid="ksl-term-output">
+                      {termHistory.length === 0 && (
                         <span className="text-zinc-700">
                           output appears here
                         </span>
                       )}
-                      {termOutput && (
-                        <>
-                          {termOutput.stdout && (
+                      {termHistory.map((entry) => (
+                        <div key={entry.id} data-testid={`ksl-term-entry-${entry.id}`}>
+                          <div className="mb-1 flex items-center gap-1.5">
+                            {entry.source === "agent" && (
+                              <span className="rounded bg-cyan-500/15 px-1 py-0 text-[9px] font-semibold uppercase tracking-wider text-cyan-300">
+                                agent
+                              </span>
+                            )}
+                            <span className={entry.source === "agent" ? "text-cyan-300/80" : "text-zinc-400"}>
+                              {entry.label}
+                            </span>
+                            {entry.pending && (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-zinc-500" />
+                            )}
+                          </div>
+                          {entry.result?.stdout && (
                             <pre className="whitespace-pre-wrap text-zinc-300">
-                              {termOutput.stdout}
+                              {entry.result.stdout}
                             </pre>
                           )}
-                          {termOutput.stderr && (
+                          {entry.result?.stderr && (
                             <pre className="whitespace-pre-wrap text-red-400">
-                              {termOutput.stderr}
+                              {entry.result.stderr}
                             </pre>
                           )}
-                          {termOutput.exit_code != null && (
-                            <div className="mt-1.5 text-[10px] text-zinc-600">
-                              exit {termOutput.exit_code}
-                              {termOutput.duration_ms != null &&
-                                ` · ${termOutput.duration_ms}ms`}
+                          {entry.result?.exit_code != null && (
+                            <div className="mt-1 text-[10px] text-zinc-600">
+                              exit {entry.result.exit_code}
+                              {entry.result.duration_ms != null &&
+                                ` · ${entry.result.duration_ms}ms`}
                             </div>
                           )}
-                        </>
-                      )}
+                        </div>
+                      ))}
+                      <div ref={termEndRef} />
                     </div>
                   </div>
                 </div>
