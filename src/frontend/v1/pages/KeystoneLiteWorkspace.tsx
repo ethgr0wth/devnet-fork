@@ -69,6 +69,14 @@ interface FileNode {
   children?: FileNode[];
 }
 
+interface ToolCallEvent {
+  id: string;
+  name: string;
+  arguments: Record<string, any>;
+  status: "running" | "done";
+  preview?: string;
+}
+
 interface ChatMsg {
   id: string;
   role: "user" | "assistant" | "system";
@@ -76,6 +84,7 @@ interface ChatMsg {
   timestamp: string;
   filesTouched?: string[];
   toolActive?: boolean;
+  toolCalls?: ToolCallEvent[];
 }
 
 interface TermResult {
@@ -124,6 +133,24 @@ function baseName(p: string): string {
   return p.split("/").pop() || p;
 }
 
+// Live activity card metadata for each KEYSTONE_IDE_TOOLS entry (backend:
+// aias api/routes/quests.py). Replaces the old plain-text "> ⚙ label"
+// injected into the markdown stream — see toolMeta() call sites below.
+const TOOL_META: Record<
+  string,
+  { icon: React.ComponentType<{ className?: string }>; label: (a: Record<string, any>) => string }
+> = {
+  read_file: { icon: FileCode, label: (a) => `Reading ${a?.path || "file"}` },
+  search_files: { icon: Search, label: (a) => `Searching "${a?.pattern || ""}"` },
+  glob_files: { icon: FolderOpen, label: (a) => `Finding files matching ${a?.pattern || ""}` },
+  list_functions: { icon: Activity, label: (a) => `Analyzing ${a?.path || "file"}` },
+  clone_repo: { icon: Download, label: (a) => `Cloning ${a?.url || "repository"}` },
+};
+
+function toolMeta(name: string) {
+  return TOOL_META[name] || { icon: Cpu, label: () => name || "Running tool" };
+}
+
 // ── component ────────────────────────────────────────────────────────────────
 
 export default function KeystoneLiteWorkspace() {
@@ -157,6 +184,9 @@ export default function KeystoneLiteWorkspace() {
     Record<string, { content: string; original: string }>
   >({});
   const [saving, setSaving] = useState(false);
+  // brief success flash on the Save button — separate from `saving` so the
+  // checkmark can hold for a beat after the request already finished
+  const [justSaved, setJustSaved] = useState(false);
 
   // chat
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -481,6 +511,8 @@ export default function KeystoneLiteWorkspace() {
         [activePath]: { ...prev[activePath], original: tab.content },
       }));
       toast.success(`Saved ${baseName(activePath)}`);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1200);
     } catch {
       toast.error("Save failed");
     } finally {
@@ -734,22 +766,35 @@ export default function KeystoneLiteWorkspace() {
               }
               break;
             case "tool_call": {
-              const label =
-                data.name === "read_file"
-                  ? `Reading \`${data.arguments?.path || "file"}\``
-                  : data.name === "search_files"
-                    ? `Searching \`${data.arguments?.pattern || ""}\``
-                    : data.name === "glob_files"
-                      ? `Finding files \`${data.arguments?.pattern || ""}\``
-                      : data.name === "list_functions"
-                        ? `Analyzing \`${data.arguments?.path || "file"}\``
-                        : data.name || "tool";
-              fullContent += `\n\n> ⚙ ${label}\n\n`;
-              patchDraft((m) => ({ ...m, content: fullContent, toolActive: true }));
+              // Structured activity, not text: rendered as a live card (see
+              // the toolCalls map in the message list) so tool use reads the
+              // same visual language as the Surgical Edits card, instead of
+              // a plain "> ⚙ label" line injected into the markdown stream.
+              const call: ToolCallEvent = {
+                id: `tc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                name: data.name || "tool",
+                arguments: data.arguments || {},
+                status: "running",
+              };
+              patchDraft((m) => ({
+                ...m,
+                toolCalls: [...(m.toolCalls || []), call],
+                toolActive: true,
+              }));
               break;
             }
             case "tool_result":
-              patchDraft((m) => ({ ...m, toolActive: false }));
+              // Tool calls execute one at a time server-side (quests.py runs
+              // them in strict call→result order), so the last "running"
+              // entry is always the one this result belongs to.
+              patchDraft((m) => {
+                const calls = m.toolCalls || [];
+                const idx = calls.map((c) => c.status).lastIndexOf("running");
+                if (idx === -1) return { ...m, toolActive: false };
+                const next = calls.slice();
+                next[idx] = { ...next[idx], status: "done", preview: data.preview };
+                return { ...m, toolCalls: next, toolActive: false };
+              });
               break;
             case "file_written":
             case "file_edited":
@@ -836,6 +881,22 @@ export default function KeystoneLiteWorkspace() {
     } catch (err: any) {
       if (err?.name === "AbortError") {
         toast.info("Stream stopped");
+        // don't leave a tool-call card pulsing "running" forever if the user
+        // stopped the stream mid-execution. patchDraft is scoped to the try{}
+        // above, so this uses setMessages directly.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === draftId
+              ? {
+                  ...m,
+                  toolActive: false,
+                  toolCalls: (m.toolCalls || []).map((c) =>
+                    c.status === "running" ? { ...c, status: "done", preview: "stopped" } : c
+                  ),
+                }
+              : m
+          )
+        );
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== draftId));
         const msg = err?.message || "Failed to send message";
@@ -1325,11 +1386,11 @@ export default function KeystoneLiteWorkspace() {
         <div className="ml-auto flex items-center gap-1.5">
           <span className="flex items-center gap-1.5 rounded border border-white/5 bg-white/[0.03] px-2 py-0.5 text-[10.5px] text-zinc-400">
             <Circle
-              className={`h-2 w-2 ${
+              className={`h-2 w-2 transition-all duration-500 ${
                 runtimeStatus === "ready"
-                  ? "fill-emerald-400 text-emerald-400"
+                  ? "fill-emerald-400 text-emerald-400 drop-shadow-[0_0_4px_rgba(52,211,153,0.9)]"
                   : runtimeStatus === "connecting"
-                    ? "fill-amber-400 text-amber-400"
+                    ? "fill-amber-400 text-amber-400 animate-pulse"
                     : "fill-red-400 text-red-400"
               }`}
             />
@@ -1427,9 +1488,9 @@ export default function KeystoneLiteWorkspace() {
                         return (
                           <div
                             key={p}
-                            className={`group flex h-8 shrink-0 cursor-pointer items-center gap-1.5 border-r border-white/5 px-2.5 text-[11.5px] ${
+                            className={`group flex h-8 shrink-0 cursor-pointer items-center gap-1.5 border-r border-white/5 px-2.5 text-[11.5px] transition-colors ${
                               activePath === p
-                                ? "border-b border-b-cyan-400 bg-[#0a0a0f] text-zinc-100"
+                                ? "border-b border-b-cyan-400 bg-[#0a0a0f] text-zinc-100 shadow-[inset_0_-1px_6px_rgba(34,211,238,0.35)]"
                                 : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
                             }`}
                             onClick={() => setActivePath(p)}
@@ -1459,19 +1520,23 @@ export default function KeystoneLiteWorkspace() {
                     <button
                       onClick={saveActiveFile}
                       disabled={!activeDirty || saving}
-                      className={`mx-2 flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] ${
-                        activeDirty
-                          ? "bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25"
-                          : "text-zinc-600"
+                      className={`mx-2 flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors duration-300 ${
+                        justSaved
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : activeDirty
+                            ? "bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25"
+                            : "text-zinc-600"
                       }`}
                       data-testid="ksl-save"
                     >
                       {saving ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : justSaved ? (
+                        <CheckCircle2 className="h-3 w-3" />
                       ) : (
                         <Save className="h-3 w-3" />
                       )}
-                      Save
+                      {justSaved ? "Saved" : "Save"}
                     </button>
                   </div>
                   {/* monaco */}
@@ -1505,7 +1570,9 @@ export default function KeystoneLiteWorkspace() {
                       />
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-2 text-zinc-700">
-                        <FileCode className="h-8 w-8" />
+                        <div className="rounded-full p-2 shadow-[0_0_18px_4px_rgba(34,211,238,0.08)]">
+                          <FileCode className="h-8 w-8" />
+                        </div>
                         <span className="text-[12px]">
                           Select a file to edit
                         </span>
@@ -1888,7 +1955,9 @@ export default function KeystoneLiteWorkspace() {
               >
                 {messages.length === 0 && (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-zinc-600">
-                    <Bot className="h-7 w-7" />
+                    <div className="rounded-full p-2 shadow-[0_0_18px_4px_rgba(34,211,238,0.12)]">
+                      <Bot className="h-7 w-7 text-zinc-500" />
+                    </div>
                     <p className="text-[12px]">
                       Ask the agent to build something.
                       <br />
@@ -1900,8 +1969,15 @@ export default function KeystoneLiteWorkspace() {
                     </p>
                   </div>
                 )}
-                {messages.map((m) => (
-                  <div key={m.id} className="mb-3" data-testid={`ksl-msg-${m.id}`}>
+                {messages.map((m, i) => (
+                  <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="mb-3"
+                    data-testid={`ksl-msg-${m.id}`}
+                  >
                     {m.role === "system" ? (
                       <div className="rounded border border-white/5 bg-white/[0.02] px-2 py-1.5 text-[11px] italic text-zinc-500">
                         {m.content}
@@ -1921,6 +1997,37 @@ export default function KeystoneLiteWorkspace() {
                             <Loader2 className="h-3 w-3 animate-spin text-cyan-400/70" />
                           )}
                         </div>
+                        {m.toolCalls && m.toolCalls.length > 0 && (
+                          <div className="mb-1.5 flex flex-col gap-1">
+                            {m.toolCalls.map((tc) => {
+                              const meta = toolMeta(tc.name);
+                              const Icon = meta.icon;
+                              const running = tc.status === "running";
+                              return (
+                                <div
+                                  key={tc.id}
+                                  className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[10.5px] transition-colors duration-300 ${
+                                    running
+                                      ? "border-cyan-500/25 bg-cyan-500/[0.06] text-cyan-300"
+                                      : "border-white/5 bg-white/[0.02] text-zinc-500"
+                                  }`}
+                                  data-testid={`ksl-toolcall-${tc.id}`}
+                                  title={tc.preview ? tc.preview.slice(0, 300) : undefined}
+                                >
+                                  <Icon
+                                    className={`h-3 w-3 shrink-0 ${running ? "animate-pulse text-cyan-400" : "text-zinc-600"}`}
+                                  />
+                                  <span className="truncate">{meta.label(tc.arguments)}</span>
+                                  {running ? (
+                                    <Loader2 className="ml-auto h-2.5 w-2.5 shrink-0 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="ml-auto h-2.5 w-2.5 shrink-0 text-emerald-400/60" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         <div
                           className={`rounded-md px-2.5 py-2 text-[12px] leading-relaxed ${
                             m.role === "user"
@@ -2033,6 +2140,15 @@ export default function KeystoneLiteWorkspace() {
                               </span>
                             )
                           )}
+                          {sending &&
+                            i === messages.length - 1 &&
+                            m.role === "assistant" &&
+                            !!m.content && (
+                              <span
+                                className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-cyan-400/80 align-middle"
+                                data-testid="ksl-stream-caret"
+                              />
+                            )}
                         </div>
                         {m.filesTouched && m.filesTouched.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -2051,7 +2167,7 @@ export default function KeystoneLiteWorkspace() {
                         )}
                       </>
                     )}
-                  </div>
+                  </motion.div>
                 ))}
                 <div ref={chatEndRef} />
               </div>
