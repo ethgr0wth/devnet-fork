@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import hmac
 import subprocess
 import uuid
 import re
@@ -10,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Set, List, Tuple
 from fastapi import FastAPI, Request, Header, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import redis  # type: ignore
@@ -149,7 +150,20 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 REDIS_HOST = os.environ.get("DEVNET_REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("DEVNET_REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("DEVNET_REDIS_DB", "11"))
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+# AiAS v1.2: storage is env-switched (DEVNET_STORAGE=nedb|redis, default nedb).
+# NEDB mode rides the battle-tested RedisOnNedb shim from the AiAS migration.
+try:
+    from src import storage as _storage
+except ImportError:  # script-style execution with src/ on sys.path
+    import storage as _storage
+redis_client = _storage.make_client()
+
+# Upstream governor: cap concurrent calls to aias + circuit-break when it's
+# sick (see upstream_governor.py — the 2026-07-12 single-worker freeze).
+try:
+    from src.upstream_governor import governor, UpstreamDown
+except ImportError:
+    from upstream_governor import governor, UpstreamDown
 
 AUTH_SALT = os.environ.get("AUTH_SALT", "devnetwork_professional_networking_salt_2026")
 
@@ -158,16 +172,21 @@ GEPPETTO_USERNAME = "geppetto"
 BOT_TOKEN_PREFIX = "dvn_bot_"
 
 print("\n" + "="*50)
-print("  DevNetwork Configuration")
+print("  AiAssist Secure Configuration")
 print("="*50)
-print(f"  Redis Host: {REDIS_HOST}")
-print(f"  Redis Port: {REDIS_PORT}")
-print(f"  Redis DB:   {REDIS_DB}")
+print(f"  Storage:    {_storage.STORAGE_MODE}")
+if _storage.STORAGE_MODE == "redis":
+    print(f"  Redis Host: {REDIS_HOST}")
+    print(f"  Redis Port: {REDIS_PORT}")
+    print(f"  Redis DB:   {REDIS_DB}")
+else:
+    print(f"  NEDBD URL:  {os.environ.get('NEDBD_URL', 'http://localhost:7070')}")
+    print(f"  NEDB DB:    {os.environ.get('NEDB_DB', 'devnet')}")
 try:
     redis_client.ping()
-    print(f"  Redis:      Connected")
+    print(f"  Storage:    Connected")
 except Exception as e:
-    print(f"  Redis:      FAILED - {e}")
+    print(f"  Storage:    FAILED - {e}")
 print("="*50 + "\n")
 
 class ConnectionManager:
@@ -238,6 +257,10 @@ def build_frontend():
         str(BASE_DIR / "frontend" / "app.ts"),
         "--bundle",
         "--outfile=" + str(BASE_DIR / "static" / "app.js"),
+        "--jsx=automatic",
+        "--alias:@=" + str(BASE_DIR / "frontend" / "v1"),
+        "--alias:wouter=" + str(BASE_DIR / "frontend" / "v1" / "lib" / "wouter-shim.tsx"),
+        "--loader:.png=dataurl",
         "--minify"
     ], check=True)
 
@@ -253,10 +276,554 @@ def get_user_by_hash(hash_value: str) -> Optional[dict]:
             return json.loads(str(user_data))
     return None
 
+
+# ── AiAS v1 auth (email + password + optional TOTP → session tokens) ─────────
+# The v1.2 front door (Mark, 2026-07-12): the fingerprint questionnaire is
+# retired from the entry flow in favor of AiAS v1's proven login/register
+# pattern. Session tokens ride the SAME X-Auth-Hash header the whole API
+# already uses — get_current_user resolves sessions first, so all existing
+# endpoints work unchanged. Legacy fingerprint auth stays functional for
+# devnet.Interchained.org parity (redis mode).
+
+SESSION_TTL_S = int(os.environ.get("DEVNET_SESSION_TTL_S", str(30 * 86400)))
+LOGIN_2FA_TTL_S = 300
+_PBKDF2_ITERS = 200_000
+
+
+def _hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERS)
+    return f"pbkdf2${_PBKDF2_ITERS}${salt.hex()}${dk.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        scheme, iters, salt_hex, hash_hex = stored.split("$")
+        if scheme != "pbkdf2":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(),
+                                 bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except Exception:
+        return False
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _mint_session(user_id: str) -> str:
+    token = "dvs_" + uuid.uuid4().hex + uuid.uuid4().hex
+    redis_client.set(f"session:{token}", user_id, ex=SESSION_TTL_S)
+    return token
+
+
+def get_user_by_session(token: str) -> Optional[dict]:
+    if not token or not token.startswith("dvs_"):
+        return None
+    user_id = redis_client.get(f"session:{token}")
+    if not user_id:
+        return None
+    user_data = redis_client.get(f"user:{user_id}")
+    return json.loads(str(user_data)) if user_data else None
+
+
+@app.post("/api/auth/signup")
+async def auth_v1_signup(request: Request):
+    """AiAS v1-pattern registration: email + password + display name."""
+    if DEVNET_AUTH == "aias":
+        return await _fed_signup(request)
+    data = await request.json()
+    email = _normalize_email(data.get("email"))
+    password = data.get("password") or ""
+    display_name = normalize_username(data.get("display_name") or "")
+
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        return JSONResponse({"success": False, "error": "A valid email is required."}, status_code=400)
+    if len(password) < 8:
+        return JSONResponse({"success": False, "error": "Password must be at least 8 characters."}, status_code=400)
+    if not display_name:
+        return JSONResponse({"success": False, "error": "Display name is required."}, status_code=400)
+    if redis_client.get(f"user:email:{email}"):
+        return JSONResponse({"success": False, "error": "An account with this email already exists."}, status_code=400)
+    if get_user_by_display_name(display_name):
+        return JSONResponse({"success": False, "error": "Username already taken. Please choose a different name."}, status_code=400)
+
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    user = {
+        "id": user_id,
+        "displayName": display_name,
+        "email": email,
+        "password": _hash_password(password),
+        "auth_scheme": "v1",
+        "bio": data.get("bio", ""),
+        "field": data.get("field", ""),
+        "experience": "",
+        "skills": [],
+        "focus": "",
+        "interests": [],
+        "teamPreference": "",
+        "talents": [],
+        "portfolio": data.get("portfolio", ""),
+        "age_confirmed": True,
+        "twoFactorEnabled": False,
+        "createdAt": now,
+        "lastSeen": now,
+        "isSuperAdmin": False,
+    }
+    pipeline = redis_client.pipeline()
+    pipeline.set(f"user:{user_id}", json.dumps(user))
+    pipeline.set(f"user:name:{display_name}", user_id)
+    pipeline.set(f"user:email:{email}", user_id)
+    pipeline.incr("stats:users:count")
+    pipeline.execute()
+
+    token = _mint_session(user_id)
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/login")
+async def auth_v1_login(request: Request):
+    """AiAS v1-pattern login. Returns requires_2fa + pending_token when the
+    account has TOTP enabled, otherwise a session token directly."""
+    if DEVNET_AUTH == "aias":
+        return await _fed_login(request)
+    data = await request.json()
+    email = _normalize_email(data.get("email"))
+    password = data.get("password") or ""
+
+    user_id = redis_client.get(f"user:email:{email}") if email else None
+    user_data = redis_client.get(f"user:{user_id}") if user_id else None
+    user = json.loads(str(user_data)) if user_data else None
+    if not user or not _verify_password(password, user.get("password") or ""):
+        return JSONResponse({"success": False, "error": "Invalid email or password."}, status_code=401)
+    if redis_client.sismember("platform:banned", user.get("id", "")):
+        return JSONResponse({"success": False, "error": "Account unavailable."}, status_code=403)
+
+    if user.get("twoFactorEnabled") and user.get("totp_secret"):
+        pending = "dvp_" + uuid.uuid4().hex
+        redis_client.set(f"login2fa:{pending}", user["id"], ex=LOGIN_2FA_TTL_S)
+        return JSONResponse({"success": True, "requires_2fa": True, "pending_token": pending})
+
+    token = _mint_session(user["id"])
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/login-2fa")
+async def auth_v1_login_2fa(request: Request):
+    if DEVNET_AUTH == "aias":
+        return await _fed_login_2fa(request)
+    data = await request.json()
+    pending = data.get("pending_token") or ""
+    code = (data.get("code") or "").strip()
+
+    user_id = redis_client.get(f"login2fa:{pending}")
+    if not user_id:
+        return JSONResponse({"success": False, "error": "Verification session expired. Sign in again."}, status_code=401)
+    user_data = redis_client.get(f"user:{user_id}")
+    user = json.loads(str(user_data)) if user_data else None
+    if not user or not user.get("totp_secret"):
+        return JSONResponse({"success": False, "error": "2FA is not configured."}, status_code=400)
+
+    totp = pyotp.TOTP(str(user["totp_secret"]))
+    if not (len(code) == 6 and code.isdigit() and totp.verify(code, valid_window=1)):
+        return JSONResponse({"success": False, "error": "Invalid verification code."}, status_code=401)
+
+    redis_client.delete(f"login2fa:{pending}")
+    token = _mint_session(user["id"])
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+@app.post("/api/auth/signout")
+async def auth_v1_signout(request: Request):
+    token = request.headers.get("X-Auth-Hash", "")
+    if token.startswith("dvs_"):
+        redis_client.delete(f"session:{token}")
+    else:
+        redis_client.delete(f"aias_tok:{_tok_key(token)}")
+    return JSONResponse({"success": True})
+
+
+# ── The Bridge (P-A): v1 workspaces ARE devnet communities ───────────────────
+# Mark's vision (2026-07-12): identity, not mirroring-with-foreign-keys.
+#   v1 environment  ≡ devnet ecosystem   (same id)
+#   v1 workspace    ≡ devnet community   (same id)
+# One-way pull, powered by the CALLER's federated token (the server never
+# stores credentials). Twins carry METADATA ONLY — workspace message bodies
+# are per-org encrypted at v1 and are never copied; the conversation lane
+# always reads live through v1 with the caller's token.
+# Division of authority: v1 owns the conversation; devnet owns the social
+# shell (membership, native channel, reactions, feed presence) on the twin.
+
+def _slugify(text: str, fallback: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:40]
+    return f"{base or 'workspace'}-{fallback[:6]}"
+
+
+async def _bridge_upstream(token: str, path: str):
+    try:
+        async with governor.slot():
+            r = await _aias_ahttp.get(path, headers={"X-Session-Token": token})
+            governor.record(True)  # server answered (any status) → not down
+        return (r.json() if r.content else {}) if r.status_code == 200 else None
+    except UpstreamDown as e:
+        print(f"[bridge] upstream governed on {path}: {e.reason}")
+        return None
+    except Exception as e:
+        governor.record(False)  # transport failure → trip the breaker
+        print(f"[bridge] upstream error on {path}: {type(e).__name__}")
+        return None
+
+
+@app.post("/api/bridge/sync-workspaces")
+async def bridge_sync_workspaces(request: Request,
+                                 x_auth_hash: Optional[str] = Header(None)):
+    """Pull the caller's v1 environments + active-env workspaces and upsert
+    devnet twins (ecosystems + communities) under the SAME ids."""
+    user = get_current_user(x_auth_hash or "")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = x_auth_hash or ""
+    if DEVNET_AUTH != "aias" or token.startswith("dvs_"):
+        return JSONResponse({"success": False,
+                             "error": "The bridge requires a federated AiAS session."},
+                            status_code=400)
+
+    me = await _bridge_upstream(token, "/api/user/me") or {}
+    me = me.get("user") or me
+    active_env = me.get("active_environment_id") or ""
+
+    envs_body = await _bridge_upstream(token, "/api/environments/") or {}
+    envs = envs_body.get("environments") or (
+        envs_body if isinstance(envs_body, list) else [])
+
+    # Paginated pull — upstream caps at 100 per page. Pull up to 5 pages
+    # (500 workspaces) per pass to stay inside the governor's budget. If a
+    # LATER page fails we keep what we got but must NOT archive: an
+    # incomplete listing would make missing workspaces look deleted.
+    workspaces = []
+    complete_pull = True
+    ws_offset = 0
+    for _ in range(5):
+        ws_body = await _bridge_upstream(
+            token, f"/api/user/workspaces?limit=100&offset={ws_offset}")
+        if ws_body is None:
+            if ws_offset == 0:
+                return JSONResponse({"success": False,
+                                     "error": "AiAS production unreachable."},
+                                    status_code=502)
+            complete_pull = False
+            break
+        page = ws_body.get("workspaces") or []
+        workspaces.extend(page)
+        if not page or not ws_body.get("has_more"):
+            break
+        ws_offset += len(page)
+    else:
+        # 5 full pages and upstream still reports more — listing is truncated.
+        complete_pull = False
+
+    now = datetime.utcnow()
+    counts = {"ecosystems": 0, "communities_created": 0,
+              "communities_updated": 0, "archived": 0, "conflicts": 0}
+
+    # ── ecosystems ← environments (ALL of them, same ids) ──
+    eco_ids = set()
+    for env in envs:
+        env_id = env.get("id")
+        if not env_id:
+            continue
+        eco_ids.add(env_id)
+        existing_raw = redis_client.get(f"ecosystem:{env_id}")
+        existing = json.loads(str(existing_raw)) if existing_raw else None
+        if existing and existing.get("origin") != "aias_v1":
+            counts["conflicts"] += 1  # never repurpose a non-twin
+            continue
+        name = env.get("name") or f"Environment {str(env_id)[:6]}"
+        slug = _slugify(name, str(env_id))
+        eco = existing or {
+            "id": env_id, "slug": slug, "description":
+                "AiAS environment — bridged from v1 production",
+            "icon": "", "accent_color": "#22d3ee",
+            "owner_id": user["id"], "created_at": now.isoformat(),
+            "settings": {},
+        }
+        eco["name"] = name
+        eco["origin"] = "aias_v1"
+        eco["origin_synced_at"] = now.isoformat()
+        pipeline = redis_client.pipeline()
+        pipeline.set(f"ecosystem:{env_id}", json.dumps(eco))
+        pipeline.set(f"ecosystem:slug:{eco['slug']}", env_id)
+        pipeline.sadd(f"ecosystem:members:{env_id}", user["id"])
+        pipeline.execute()
+        counts["ecosystems"] += 1
+
+    # ── communities ← workspaces (active env this pass) ──
+    prev_ids = set(redis_client.smembers(f"bridge:groups:{user['id']}") or [])
+    seen_ids = set()
+    for w in workspaces:
+        ws_id = w.get("id")
+        if not ws_id:
+            continue
+        seen_ids.add(ws_id)
+        # NOTE: upstream workspace previews do NOT carry environment_id today,
+        # so this always falls through to active_env (the listing is
+        # active-env-scoped anyway). Kept first in the chain so twins scope
+        # correctly if upstream ever adds the field.
+        eco_id = w.get("environment_id") or active_env or DEVONE_ECOSYSTEM_ID
+        title = w.get("title") or (w.get("first_message") or "")[:40] \
+            or f"Workspace {str(ws_id)[:6]}"
+        attention = str(w.get("needs_human_attention")).lower() == "true"
+        raw = redis_client.get(f"group:{ws_id}")
+        existing = json.loads(str(raw)) if raw else None
+        if existing and existing.get("origin") != "aias_v1":
+            counts["conflicts"] += 1
+            continue
+        if existing:
+            existing["name"] = title
+            existing["status"] = "approved"
+            existing["needs_attention"] = attention
+            existing["origin_synced_at"] = now.isoformat()
+            existing["ecosystem_id"] = existing.get("ecosystem_id") or eco_id
+            redis_client.set(f"group:{ws_id}", json.dumps(existing))
+            counts["communities_updated"] += 1
+        else:
+            slug = _slugify(title, str(ws_id))
+            group = {
+                "id": ws_id, "name": title, "slug": slug,
+                "description": "AiAS workspace — the conversation lane lives on v1 production; this is its community.",
+                "terms": "", "avatar": "",
+                "creator_id": user["id"], "created_at": now.isoformat(),
+                "status": "approved", "privacy": "private",
+                "member_count": 1, "ecosystem_id": eco_id,
+                "origin": "aias_v1",
+                "origin_synced_at": now.isoformat(),
+                "needs_attention": attention,
+            }
+            pipeline = redis_client.pipeline()
+            pipeline.set(f"group:{ws_id}", json.dumps(group))
+            pipeline.set(f"group:slug:{slug}", ws_id)
+            pipeline.zadd("groups:approved", {ws_id: now.timestamp()})
+            pipeline.zadd(f"ecosystem:groups:{eco_id}", {ws_id: now.timestamp()})
+            pipeline.hset(f"group:roles:{ws_id}", user["id"], "owner")
+            pipeline.sadd(f"group:members:{ws_id}", user["id"])
+            pipeline.sadd(f"bridge:groups:{user['id']}", ws_id)
+            pipeline.execute()
+            counts["communities_created"] += 1
+        # membership accrues from each caller's own v1 access
+        if existing:
+            pipeline = redis_client.pipeline()
+            pipeline.sadd(f"group:members:{ws_id}", user["id"])
+            pipeline.sadd(f"bridge:groups:{user['id']}", ws_id)
+            if not redis_client.hget(f"group:roles:{ws_id}", user["id"]):
+                pipeline.hset(f"group:roles:{ws_id}", user["id"], "owner")
+            pipeline.execute()
+
+    # ── archival: twins this user synced before that v1 no longer lists ──
+    # (active-env scope: only archive twins that BELONG to the active env,
+    # so rooms from other environments survive until you sync there.
+    # Skipped entirely on a partial pull — see pagination above.)
+    for gone in (prev_ids - seen_ids) if complete_pull else set():
+        raw = redis_client.get(f"group:{gone}")
+        if not raw:
+            continue
+        g = json.loads(str(raw))
+        if g.get("origin") == "aias_v1" and g.get("status") != "archived" \
+                and (not active_env or g.get("ecosystem_id") == active_env):
+            g["status"] = "archived"
+            g["origin_synced_at"] = now.isoformat()
+            redis_client.set(f"group:{gone}", json.dumps(g))
+            counts["archived"] += 1
+
+    return JSONResponse({"success": True, **counts,
+                         "complete": complete_pull,
+                         "active_environment": active_env})
+
+
+# ── AiAS identity federation (v2: one identity, anchored at production) ──────
+# Mark's architecture call (2026-07-12): devnet does NOT replace the aias
+# backend — it becomes a first-class citizen of AiAS production. There is ONE
+# login/register pattern: aias v1's. The landing proxies to
+# {AIAS_API_BASE}/api/auth/login (+verify-2fa) and /api/user/register; the v1
+# session token becomes THE credential everywhere (front door, social
+# features, inline weave views). Devnet auto-provisions its social-graph user
+# doc from the aias identity on first sight. DEVNET_AUTH=local keeps the
+# self-contained mode for offline dev / air-gapped boots.
+
+DEVNET_AUTH = os.environ.get("DEVNET_AUTH", "aias").lower()
+AIAS_API_BASE = os.environ.get("AIAS_API_BASE", "https://api.aiassist.net").rstrip("/")
+_AIAS_TOK_CACHE_S = int(os.environ.get("AIAS_TOKEN_CACHE_S", "300"))
+# Async client for endpoint handlers — upstream slowness must NEVER block
+# the event loop (the 3:43 PM login-502 regression: a shared blocking client
+# wedged the loop once the desktop started fanning calls upstream).
+_aias_ahttp = httpx.AsyncClient(base_url=AIAS_API_BASE, timeout=10.0)
+# Short-timeout sync client ONLY for the cached token resolution inside the
+# synchronous get_current_user path (one call per user per 300s).
+_aias_http = httpx.Client(base_url=AIAS_API_BASE, timeout=6.0)
+
+
+def _tok_key(token: str) -> str:
+    """Cache key from a token — hash it; raw credentials never persist."""
+    return hashlib.sha256((token or "").encode()).hexdigest()[:40]
+
+
+def _fed_err(payload: dict, status: int) -> JSONResponse:
+    msg = payload.get("detail") or payload.get("error") or "Sign-in failed."
+    return JSONResponse({"success": False, "error": str(msg)}, status_code=status)
+
+
+def _provision_aias_user(v1u: dict) -> dict:
+    """Mirror an aias identity into the devnet social graph (id-stable)."""
+    uid = v1u["id"]
+    existing = redis_client.get(f"user:{uid}")
+    if existing:
+        user = json.loads(str(existing))
+        user["lastSeen"] = datetime.utcnow().isoformat()
+        # keep privilege in sync with production
+        user["isSuperAdmin"] = v1u.get("role") in ("super_admin", "admin") or user.get("isSuperAdmin", False)
+        redis_client.set(f"user:{uid}", json.dumps(user))
+        return user
+
+    base_name = normalize_username(v1u.get("display_name") or
+                                   (v1u.get("email") or "member").split("@")[0])
+    name, n = base_name or "member", 2
+    while redis_client.get(f"user:name:{name}") not in (None, uid):
+        name = f"{base_name}{n}"
+        n += 1
+    now = datetime.utcnow().isoformat()
+    user = {
+        "id": uid,
+        "displayName": name,
+        "email": v1u.get("email") or "",
+        "auth_scheme": "aias",
+        "plan": v1u.get("plan") or "",
+        "bio": "", "field": "", "experience": "", "skills": [],
+        "focus": "", "interests": [], "teamPreference": "", "talents": [],
+        "portfolio": "", "age_confirmed": True,
+        "twoFactorEnabled": True,  # governed by aias, not local TOTP
+        "createdAt": now, "lastSeen": now,
+        "isSuperAdmin": v1u.get("role") in ("super_admin", "admin"),
+    }
+    pipeline = redis_client.pipeline()
+    pipeline.set(f"user:{uid}", json.dumps(user))
+    pipeline.set(f"user:name:{name}", uid)
+    if user["email"]:
+        pipeline.set(f"user:email:{user['email'].lower()}", uid)
+    pipeline.incr("stats:users:count")
+    pipeline.execute()
+    return user
+
+
+def _aias_session_user(token: str) -> Optional[dict]:
+    """Resolve an aias session token → provisioned devnet user (cached)."""
+    if not token or token.startswith("dvs_"):
+        return None
+    uid = redis_client.get(f"aias_tok:{_tok_key(token)}")
+    if uid:
+        d = redis_client.get(f"user:{uid}")
+        if d:
+            return json.loads(str(d))
+    try:
+        r = _aias_http.get("/api/user/me", headers={"X-Session-Token": token})
+        if r.status_code != 200:
+            return None
+        v1u = r.json()
+        v1u = v1u.get("user") or v1u  # tolerate either envelope
+        if not v1u.get("id"):
+            return None
+    except Exception:
+        return None
+    user = _provision_aias_user(v1u)
+    redis_client.set(f"aias_tok:{_tok_key(token)}", user["id"],
+                     ex=_AIAS_TOK_CACHE_S)
+    return user
+
+
+def _fed_finish(v1_payload: dict) -> JSONResponse:
+    """Common tail for login/2fa/register proxies: provision + local shape."""
+    v1u = v1_payload.get("user") or {}
+    token = v1_payload.get("session_token")
+    if not (v1u.get("id") and token):
+        return _fed_err(v1_payload, 502)
+    user = _provision_aias_user(v1u)
+    redis_client.set(f"aias_tok:{_tok_key(token)}", user["id"],
+                     ex=_AIAS_TOK_CACHE_S)
+    pub = {k: v for k, v in user.items() if k != "password"}
+    return JSONResponse({"success": True, "user": pub, "session_token": token})
+
+
+async def _fed_login(request: Request) -> JSONResponse:
+    data = await request.json()
+    try:
+        r = await _aias_ahttp.post("/api/auth/login", json={
+            "email": (data.get("email") or "").strip(),
+            "password": data.get("password") or ""})
+    except Exception as e:
+        print(f"[fed] login upstream error: {type(e).__name__}: {e}")
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    if body.get("requires_2fa") and body.get("pending_token"):
+        return JSONResponse({"success": True, "requires_2fa": True,
+                             "pending_token": body["pending_token"]})
+    return _fed_finish(body)
+
+
+async def _fed_login_2fa(request: Request) -> JSONResponse:
+    data = await request.json()
+    try:
+        r = await _aias_ahttp.post("/api/auth/verify-2fa", json={
+            "pending_token": data.get("pending_token") or "",
+            "code": (data.get("code") or "").strip()})
+    except Exception as e:
+        print(f"[fed] 2fa upstream error: {type(e).__name__}: {e}")
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    return _fed_finish(body)
+
+
+async def _fed_signup(request: Request) -> JSONResponse:
+    data = await request.json()
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    try:
+        r = await _aias_ahttp.post("/api/user/register", json={
+            "email": email, "password": password,
+            "display_name": (data.get("display_name") or "").strip()})
+    except Exception as e:
+        print(f"[fed] register upstream error: {type(e).__name__}: {e}")
+        return JSONResponse({"success": False, "error": "AiAS production unreachable — try again."}, status_code=502)
+    body = r.json() if r.content else {}
+    if r.status_code != 200:
+        return _fed_err(body, r.status_code)
+    # v1 register sets a cookie but returns no token in the body — complete
+    # the loop with the one login pattern to get the header-transport token.
+    try:
+        r2 = await _aias_ahttp.post("/api/auth/login",
+                                    json={"email": email, "password": password})
+        body2 = r2.json() if r2.content else {}
+    except Exception:
+        return JSONResponse({"success": False, "error": "Registered — now sign in."}, status_code=502)
+    if r2.status_code != 200 or not body2.get("session_token"):
+        return JSONResponse({"success": True, "registered": True,
+                             "error": "Account created — sign in to continue."})
+    return _fed_finish(body2)
+
 def get_current_user(auth_hash: str) -> Optional[dict]:
+    """One credential header, two schemes: AiAS v1 session tokens (dvs_*)
+    resolve first; legacy fingerprint hashes keep working for parity."""
     if not auth_hash:
         return None
-    user = get_user_by_hash(auth_hash)
+    user = get_user_by_session(auth_hash) or get_user_by_hash(auth_hash)
+    if user is None and DEVNET_AUTH == "aias":
+        user = _aias_session_user(auth_hash)
     if user and redis_client.sismember("platform:banned", user.get("id", "")):
         return None
     return user
@@ -532,7 +1099,7 @@ def seed_platform_groups():
         system_user_id = str(uuid.uuid4())
         system_user = {
             "id": system_user_id,
-            "displayName": "DevNetwork",
+            "displayName": "AiAssist Secure",
             "bio": "Official platform account",
             "is_admin": True,
             "is_system": True,
@@ -675,7 +1242,7 @@ def bootstrap_ecosystems():
         system_user_id = str(uuid.uuid4())
         system_user = {
             "id": system_user_id,
-            "displayName": "DevNetwork",
+            "displayName": "AiAssist Secure",
             "bio": "Official platform account",
             "is_admin": True,
             "is_superadmin": True,
@@ -690,7 +1257,7 @@ def bootstrap_ecosystems():
         "id": DEVONE_ECOSYSTEM_ID,
         "name": "DevOne",
         "slug": "devone",
-        "description": "The default DevNetwork ecosystem",
+        "description": "The default AiAssist Secure ecosystem",
         "icon": "",
         "accent_color": "#10b981",
         "owner_id": system_user_id,
@@ -768,7 +1335,7 @@ def init_geppetto():
     geppetto = {
         "id": GEPPETTO_ID,
         "displayName": "Geppetto",
-        "bio": "I help you create and manage bots on DevNetwork. DM me to get started!",
+        "bio": "I help you create and manage bots on AiAssist Secure. DM me to get started!",
         "field": "Bot Orchestration",
         "experience": "system",
         "skills": ["bot-management", "automation", "orchestration"],
@@ -785,7 +1352,7 @@ def init_geppetto():
         "is_system_bot": True,
         "bot_data": {
             "operator_id": "system",
-            "purpose": "Bot orchestration console for DevNetwork. Create and manage your bots through conversational commands.",
+            "purpose": "Bot orchestration console for AiAssist Secure. Create and manage your bots through conversational commands.",
             "capabilities_declared": ["send_dm", "read_dm", "system_commands"],
             "capabilities_granted_global": ["send_dm", "read_dm", "system_commands"],
             "status": "active",
@@ -1430,7 +1997,7 @@ def handle_geppetto_command(user: dict, conv_id: str, content: str):
     elif content_lower == "/help" or content_lower == "help":
         return send_geppetto_reply(conv_id,
             "**🤖 Geppetto - Bot Management**\n\n" +
-            "I help you create and manage bots on DevNetwork.\n\n" +
+            "I help you create and manage bots on AiAssist Secure.\n\n" +
             "**Commands:**\n" +
             "• `/newbot` - Create a new bot\n" +
             "• `/mybots` - List your bots\n" +
@@ -1582,8 +2149,9 @@ def handle_wizard_step(user: dict, conv_id: str, content: str, wizard_state: dic
 
 async def bot_dm_subscriber():
     """Background task to subscribe to Redis pub/sub for bot DMs (multi-instance support)"""
-    import redis as sync_redis
-    pubsub = sync_redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB).pubsub()
+    # Storage-mode aware: real Redis pubsub in redis mode, in-process queue
+    # under NEDB (single-worker doctrine — production.sh pins WORKERS=1).
+    pubsub = _storage.make_pubsub()
     pubsub.psubscribe("bot:dm:*")
     
     print("[PUBSUB] Bot DM subscriber started")
@@ -1620,27 +2188,47 @@ async def startup():
     bootstrap_ecosystems()
     init_geppetto()
     asyncio.create_task(bot_dm_subscriber())
-    try:
-        import importlib.util, pathlib
-        _sb_path = pathlib.Path(__file__).parent / "system_bots.py"
-        _sb_spec = importlib.util.spec_from_file_location("system_bots", _sb_path)
-        _sb = importlib.util.module_from_spec(_sb_spec)
-        _sb_spec.loader.exec_module(_sb)
-        app.state.system_bots_module = _sb
-        _sb.set_user_ws_connections(USER_WS_CONNECTIONS)
-        asyncio.create_task(_sb.run_system_bots(ws_manager))
-    except Exception as e:
-        print(f"[SystemBot] Failed to start system bots: {e}")
+    # System bots are demo/simulation bots from the original DevNetwork —
+    # OFF by default for AiAS v1.2 (Mark, 2026-07-12). Real agents arrive in
+    # Phase 2 through the bot-platform APIs instead.
+    if os.environ.get("DEVNET_SYSTEM_BOTS", "off").lower() in ("on", "1", "true"):
+        try:
+            import importlib.util, pathlib
+            _sb_path = pathlib.Path(__file__).parent / "system_bots.py"
+            _sb_spec = importlib.util.spec_from_file_location("system_bots", _sb_path)
+            _sb = importlib.util.module_from_spec(_sb_spec)
+            _sb_spec.loader.exec_module(_sb)
+            app.state.system_bots_module = _sb
+            _sb.set_user_ws_connections(USER_WS_CONNECTIONS)
+            asyncio.create_task(_sb.run_system_bots(ws_manager))
+        except Exception as e:
+            print(f"[SystemBot] Failed to start system bots: {e}")
+    else:
+        print("[SystemBot] Disabled via DEVNET_SYSTEM_BOTS=off")
 
 @app.get("/favicon.ico")
 async def favicon():
+    return FileResponse(BASE_DIR / "static" / "favicon.png", media_type="image/png")
+
+
+@app.get("/favicon.png")
+async def favicon_png():
+    """Transplanted v1 pages reference /favicon.png at the root."""
     return FileResponse(BASE_DIR / "static" / "favicon.png", media_type="image/png")
 
 @app.get("/api/config")
 async def get_config():
     return JSONResponse({
         "default_ecosystem_id": DEVONE_ECOSYSTEM_ID,
-        "platform": "devnetwork"
+        "platform": "devnetwork",
+        # SAME-ORIGIN doctrine: the browser calls relative /api paths only;
+        # the server proxies v1 traffic to AIAS_API_BASE internally. That
+        # upstream address is an INTERNAL detail (often loopback) and must
+        # never reach clients — exporting it once made every browser dial
+        # 127.0.0.1:8000. Clients get only the public v1 web app address,
+        # used for link-outs (new-tab opens), never for fetches.
+        "aias_app_base": os.environ.get("AIAS_APP_BASE", "https://aiassist.net"),
+        "auth_mode": os.environ.get("DEVNET_AUTH", "aias").lower(),
     })
 
 @app.get("/", response_class=HTMLResponse)
@@ -1670,9 +2258,28 @@ async def validate_auth(request: Request):
     data = await request.json()
     hash_value = data.get("hash")
     totp_code = data.get("totp_code")
-    
+
     if not hash_value:
         raise HTTPException(status_code=400, detail="Hash required")
+
+    # Federated aias tokens validate against production (cached).
+    if DEVNET_AUTH == "aias" and not str(hash_value).startswith("dvs_") \
+            and len(str(hash_value)) > 24:
+        fed_user = _aias_session_user(str(hash_value))
+        if fed_user:
+            fed_user.pop("password", None)
+            return JSONResponse({"valid": True, "user": fed_user})
+        # fall through: may be a legacy fingerprint hash
+
+    # AiAS v1 sessions (dvs_*) are post-authentication credentials — they
+    # validate directly, no 2FA re-challenge on boot.
+    if str(hash_value).startswith("dvs_"):
+        session_user = get_user_by_session(str(hash_value))
+        if session_user and not redis_client.sismember(
+                "platform:banned", session_user.get("id", "")):
+            session_user.pop("password", None)
+            return JSONResponse({"valid": True, "user": session_user})
+        return JSONResponse({"valid": False, "error": "Session expired. Please sign in again."}, status_code=401)
     
     user = get_user_by_hash(hash_value)
     if user:
@@ -3366,6 +3973,8 @@ async def list_groups(x_auth_hash: Optional[str] = Header(None), ecosystem_id: O
         group_data = redis_client.get(f"group:{gid}")
         if group_data:
             group = json.loads(str(group_data))
+            if group.get("status") == "archived":
+                continue  # bridge-archived twins leave the list (deep links still resolve)
             if group.get("ecosystem_id", DEVONE_ECOSYSTEM_ID) != eco_filter:
                 continue
             is_private = group.get("privacy") == "private"
@@ -5200,7 +5809,7 @@ async def bot_docs():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevNetwork Bot API - Level Up Your Bot!</title>
+    <title>AiAssist Secure Bot API - Level Up Your Bot!</title>
     <link rel="icon" href="/static/favicon.png" type="image/png">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -5309,7 +5918,7 @@ async def bot_docs():
 <body>
     <div class="container">
         <div class="hero">
-            <img src="/static/logo-icon-dark.png" alt="DevNetwork" style="height: 60px; object-fit: contain; margin: 0 auto 20px; display: block; filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.3));">
+            <img src="/static/favicon.png" alt="AiAssist Secure" style="height: 60px; object-fit: contain; margin: 0 auto 20px; display: block; filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.4)) drop-shadow(0 0 6px rgba(139, 92, 246, 0.3));">
             <h1>Bot API Quest</h1>
             <p class="tagline">Build legendary bots. Unlock powers. Dominate the network.</p>
             <div class="stats">
@@ -5693,7 +6302,7 @@ posts.forEach(p => console.log(p.content));</code></pre>
         </div>
         
         <div class="footer">
-            <p>Built with ❤️ for the DevNetwork community</p>
+            <p>Built with ❤️ for the AiAssist Secure community</p>
             <p style="margin-top: 10px;">Questions? DM <a href="#">@geppetto</a> for help!</p>
         </div>
     </div>
@@ -6392,6 +7001,412 @@ async def get_thread_replies(group_id: str, root_message_id: str, x_auth_hash: O
     meta_raw = redis_client.get(f"thread:meta:{group_id}:{root_message_id}")
     meta = json.loads(str(meta_raw)) if meta_raw else {}
     return JSONResponse({"root": root_msg, "replies": replies, "meta": meta})
+
+# ── KeyStone checkpoints: stash-to-zip → nedb ("NEDB has time travel") ──────
+# Strategy (Mark): zip the environment's files, store the zip IN NEDB with a
+# version string + microsecond timestamp + micronotes (per-file sizes, trigger,
+# note). Restore = unzip → staged overwrite (unpack / overwrite / prune) pushed
+# back upstream through the same keystone file APIs. The user doesn't see the
+# machinery — the UI just shows "stash vN ✓" and restore phase ticks.
+
+_KS_CKPT_META = "ks_ckpt_meta"
+_KS_CKPT_ZIP = "ks_ckpt_zip"
+_KS_CKPT_MAX_FILES = 2000
+_KS_CKPT_MAX_FILE_BYTES = 8 * 1024 * 1024      # skip single files above 8MB (Mark: nothing >6MB)
+_KS_CKPT_MAX_ZIP_BYTES = 32 * 1024 * 1024      # hard cap on stored zip
+_KS_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+
+try:
+    from src.nedb import NedbdClient as _KsNedbClient
+except ImportError:
+    from nedb import NedbdClient as _KsNedbClient
+
+
+def _ks_nedb() -> "_KsNedbClient":
+    return _KsNedbClient(
+        base=os.environ.get("NEDBD_URL", "http://localhost:7070"),
+        token=os.environ.get("NEDBD_TOKEN"),
+        db=os.environ.get("NEDB_DB", "devnet"))
+
+
+def _ks_token(request: Request) -> str:
+    token = request.headers.get("X-Auth-Hash") \
+        or request.headers.get("X-Session-Token") \
+        or request.cookies.get("session_id") or ""
+    if not token or token.startswith("dvs_"):
+        raise HTTPException(status_code=401,
+                            detail="keystone checkpoints require a federated AiAS session")
+    return token
+
+
+async def _ks_upstream(token: str, method: str, url: str,
+                       json_body: Optional[dict] = None) -> httpx.Response:
+    headers = {"X-Session-Token": token, "Cookie": f"session_id={token}"}
+    try:
+        async with governor.slot():
+            resp = await _aias_ahttp.request(method, url, headers=headers,
+                                             json=json_body)
+        governor.record(True)
+        return resp
+    except UpstreamDown as e:
+        raise HTTPException(status_code=503,
+                            detail=f"AiAS upstream busy — backing off ({e.reason})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        governor.record(False)
+        raise HTTPException(status_code=502,
+                            detail=f"AiAS upstream error: {type(e).__name__}")
+
+
+def _ks_walk_tree(node: dict, out: list) -> None:
+    if not isinstance(node, dict):
+        return
+    if node.get("type") == "file":
+        out.append({"path": node.get("path", ""), "size": int(node.get("size") or 0)})
+        return
+    for child in node.get("children") or []:
+        _ks_walk_tree(child, out)
+
+
+async def _ks_assert_env_access(token: str, env_id: str) -> None:
+    resp = await _ks_upstream(token, "GET", f"/api/keystone/environments/{env_id}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code,
+                            detail="environment not found or access denied")
+
+
+def _ks_validate_id(value: str, label: str) -> str:
+    if not value or not _KS_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"invalid {label}")
+    return value
+
+
+@app.post("/api/keystone/environments/{env_id}/checkpoints")
+async def ks_checkpoint_create(env_id: str, request: Request):
+    """Stash the environment to a zip and store it in nedb, versioned."""
+    import io
+    import zipfile
+
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    trigger = str((body or {}).get("trigger") or "manual")[:40]
+    note = str((body or {}).get("note") or "")[:200]
+
+    tree_resp = await _ks_upstream(
+        token, "GET", f"/api/keystone/environments/{env_id}/files/tree")
+    if tree_resp.status_code >= 400:
+        raise HTTPException(status_code=tree_resp.status_code,
+                            detail="environment not found or access denied")
+    tree = (tree_resp.json() or {}).get("tree") or {}
+    entries: list[dict] = []
+    _ks_walk_tree(tree, entries)
+    if len(entries) > _KS_CKPT_MAX_FILES:
+        raise HTTPException(status_code=413,
+                            detail=f"too many files to stash ({len(entries)} > {_KS_CKPT_MAX_FILES})")
+
+    skipped: list[dict] = []
+    to_read = []
+    for e in entries:
+        if e["size"] > _KS_CKPT_MAX_FILE_BYTES:
+            skipped.append({"path": e["path"], "reason": "too large"})
+        else:
+            to_read.append(e)
+
+    sem = asyncio.Semaphore(6)
+    contents: dict[str, str] = {}
+
+    async def _read_one(entry: dict) -> None:
+        async with sem:
+            r = await _ks_upstream(
+                token, "GET",
+                f"/api/keystone/environments/{env_id}/files/read?path={httpx.QueryParams({'p': entry['path']})['p']}")
+        if r.status_code >= 400:
+            skipped.append({"path": entry["path"], "reason": f"read {r.status_code}"})
+            return
+        payload = r.json() or {}
+        if payload.get("content") is None:
+            skipped.append({"path": entry["path"], "reason": "binary"})
+            return
+        contents[entry["path"]] = payload["content"]
+
+    await asyncio.gather(*[_read_one(e) for e in to_read])
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path, content in sorted(contents.items()):
+            zf.writestr(path, content)
+    zip_bytes = buf.getvalue()
+    if len(zip_bytes) > _KS_CKPT_MAX_ZIP_BYTES:
+        raise HTTPException(status_code=413,
+                            detail=f"stash zip too large ({len(zip_bytes)} bytes)")
+
+    nedb = _ks_nedb()
+    try:
+        existing = nedb.query(
+            f'FROM {_KS_CKPT_META} WHERE env_id = "{env_id}"')
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline — checkpoint not stored")
+    version_n = len(existing) + 1
+    now = datetime.utcnow()
+    ts_iso = now.isoformat(timespec="microseconds") + "Z"
+    ts_ms = int(now.timestamp() * 1000)
+    ckpt_id = f"ckpt:{env_id}:{ts_ms}:{uuid.uuid4().hex[:8]}"
+    version = f"v{version_n}"
+    vstring = f"{version}+{ts_iso}"
+    raw_bytes = sum(len(c.encode("utf-8", errors="replace")) for c in contents.values())
+
+    meta_doc = {
+        "kind": "ks_checkpoint",
+        "env_id": env_id,
+        "version": version,
+        "version_n": version_n,
+        "vstring": vstring,
+        "ts_iso": ts_iso,
+        "ts_ms": ts_ms,
+        "trigger": trigger,
+        "note": note,
+        "file_count": len(contents),
+        "skipped": skipped[:50],
+        "raw_bytes": raw_bytes,
+        "zip_bytes": len(zip_bytes),
+        "files": [{"path": p, "size": len(c.encode("utf-8", errors="replace"))}
+                  for p, c in sorted(contents.items())][:500],
+    }
+    zip_doc = {
+        "kind": "ks_checkpoint_zip",
+        "env_id": env_id,
+        "vstring": vstring,
+        "zip_b64": base64.b64encode(zip_bytes).decode("ascii"),
+    }
+    try:
+        result = nedb.tx([
+            {"op": "put", "coll": _KS_CKPT_META, "id": ckpt_id, "doc": meta_doc},
+            {"op": "put", "coll": _KS_CKPT_ZIP, "id": ckpt_id, "doc": zip_doc},
+        ], client="devnet-ksckpt")
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline — checkpoint not stored")
+    if result.get("_status", 200) >= 400 or result.get("error"):
+        raise HTTPException(status_code=502,
+                            detail=f"nedb rejected checkpoint: {str(result.get('error'))[:200]}")
+
+    return {"checkpoint_id": ckpt_id, "version": version, "vstring": vstring,
+            "ts_iso": ts_iso, "ts_ms": ts_ms, "file_count": len(contents),
+            "skipped": len(skipped), "zip_bytes": len(zip_bytes), "trigger": trigger}
+
+
+@app.get("/api/keystone/environments/{env_id}/checkpoints")
+async def ks_checkpoint_list(env_id: str, request: Request):
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    await _ks_assert_env_access(token, env_id)
+    nedb = _ks_nedb()
+    try:
+        rows = nedb.query(f'FROM {_KS_CKPT_META} WHERE env_id = "{env_id}"')
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline")
+    rows.sort(key=lambda r: r.get("ts_ms") or 0, reverse=True)
+    checkpoints = [{
+        "checkpoint_id": r.get("_id"),
+        "version": r.get("version"),
+        "vstring": r.get("vstring"),
+        "ts_iso": r.get("ts_iso"),
+        "ts_ms": r.get("ts_ms"),
+        "trigger": r.get("trigger"),
+        "note": r.get("note"),
+        "file_count": r.get("file_count"),
+        "zip_bytes": r.get("zip_bytes"),
+        "skipped": len(r.get("skipped") or []),
+    } for r in rows[:100]]
+    return {"checkpoints": checkpoints, "total": len(rows)}
+
+
+@app.post("/api/keystone/environments/{env_id}/checkpoints/{ckpt_id}/restore")
+async def ks_checkpoint_restore(env_id: str, ckpt_id: str, request: Request):
+    """Unzip a stashed checkpoint and overwrite the environment in stages:
+    unpack → overwrite (writes) → prune (delete files not in the stash)."""
+    import io
+    import zipfile
+
+    token = _ks_token(request)
+    _ks_validate_id(env_id, "environment id")
+    _ks_validate_id(ckpt_id, "checkpoint id")
+
+    nedb = _ks_nedb()
+    try:
+        meta = nedb.get_doc(_KS_CKPT_META, ckpt_id)
+        zdoc = nedb.get_doc(_KS_CKPT_ZIP, ckpt_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="nedb offline")
+    if not meta or not zdoc or meta.get("env_id") != env_id or zdoc.get("env_id") != env_id:
+        raise HTTPException(status_code=404, detail="checkpoint not found")
+
+    # authz + current file list (needed for the prune phase)
+    tree_resp = await _ks_upstream(
+        token, "GET", f"/api/keystone/environments/{env_id}/files/tree")
+    if tree_resp.status_code >= 400:
+        raise HTTPException(status_code=tree_resp.status_code,
+                            detail="environment not found or access denied")
+    current: list[dict] = []
+    _ks_walk_tree((tree_resp.json() or {}).get("tree") or {}, current)
+
+    # phase 1: unpack
+    try:
+        zip_bytes = base64.b64decode(zdoc.get("zip_b64") or "")
+        entries: dict[str, str] = {}
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for name in zf.namelist():
+                if name.endswith("/"):
+                    continue
+                entries[name] = zf.read(name).decode("utf-8", errors="replace")
+    except Exception:
+        raise HTTPException(status_code=500, detail="stash zip is corrupt")
+
+    sem = asyncio.Semaphore(6)
+    failures: list[dict] = []
+
+    # phase 2: overwrite
+    written = 0
+
+    async def _write_one(path: str, content: str) -> bool:
+        async with sem:
+            r = await _ks_upstream(
+                token, "POST",
+                f"/api/keystone/environments/{env_id}/files/write",
+                json_body={"path": path, "content": content})
+        if r.status_code >= 400:
+            failures.append({"path": path, "phase": "overwrite", "status": r.status_code})
+            return False
+        return True
+
+    results = await asyncio.gather(*[_write_one(p, c) for p, c in entries.items()])
+    written = sum(1 for ok in results if ok)
+
+    # phase 3: prune — current files not present in the stash get deleted
+    stash_paths = set(entries.keys())
+    prune_targets = [e["path"] for e in current
+                     if e["path"] not in stash_paths and e["path"]]
+    pruned = 0
+
+    async def _prune_one(path: str) -> bool:
+        async with sem:
+            r = await _ks_upstream(
+                token, "DELETE",
+                f"/api/keystone/environments/{env_id}/files/delete?path={httpx.QueryParams({'p': path})['p']}")
+        if r.status_code >= 400:
+            failures.append({"path": path, "phase": "prune", "status": r.status_code})
+            return False
+        return True
+
+    prune_results = await asyncio.gather(*[_prune_one(p) for p in prune_targets])
+    pruned = sum(1 for ok in prune_results if ok)
+
+    return {
+        "restored": True,
+        "checkpoint_id": ckpt_id,
+        "version": meta.get("version"),
+        "vstring": meta.get("vstring"),
+        "phases": {"unpack": len(entries), "overwrite": written, "prune": pruned},
+        "failures": failures[:50],
+    }
+
+
+# ── The same-origin v1 proxy (Mark: "every v1 surface belongs on devnet") ────
+# The transplanted v1 pages call RELATIVE /api paths — their original v1
+# form. Devnet serves its own routes first; anything matching a v1 prefix
+# below is proxied server-side to AIAS_API_BASE with the caller's token
+# forwarded BOTH ways v1 understands:
+#   X-Session-Token: <token>       (the modern dual-transport gates)
+#   Cookie: session_id=<token>     (EVERY legacy cookie-only gate)
+# One structure kills the whole cross-origin 401 class — no CORS, no
+# per-gate aias patches, no deploy races. Streaming (SSE) passes through.
+
+V1_PROXY_PREFIXES = (
+    "playground", "keystone", "runtime", "artifacts", "deployed-agents",
+    "flashcards", "providers", "templates", "directives", "environments",
+    "image", "tts", "voice", "voice-actions", "licenses", "subscription",
+    "billing", "org", "quests", "code", "blog", "knowledge", "stats",
+    "user",  # /api/user/me, /api/user/workspaces, usage, api-keys, ...
+)
+
+_PROXY_SKIP_REQ_HEADERS = {"host", "content-length", "connection",
+                           "accept-encoding", "cookie", "x-auth-hash",
+                           "x-session-token", "authorization"}
+_PROXY_SKIP_RES_HEADERS = {"content-length", "transfer-encoding",
+                           "content-encoding", "connection",
+                           "access-control-allow-origin",
+                           "access-control-allow-credentials",
+                           "set-cookie"}
+
+
+@app.api_route("/api/{v1_path:path}",
+               methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def v1_same_origin_proxy(v1_path: str, request: Request):
+    """Registered LAST — devnet's own /api routes always win; only unmatched
+    paths under a known v1 prefix are forwarded."""
+    head = v1_path.split("/", 1)[0]
+    if head not in V1_PROXY_PREFIXES:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    token = request.headers.get("X-Auth-Hash") \
+        or request.headers.get("X-Session-Token") or ""
+    if token.startswith("dvs_"):
+        # Local-mode devnet sessions carry no v1 identity.
+        raise HTTPException(status_code=401,
+                            detail="v1 surfaces require a federated AiAS session")
+
+    fwd_headers = {k: v for k, v in request.headers.items()
+                   if k.lower() not in _PROXY_SKIP_REQ_HEADERS}
+    if token:
+        fwd_headers["X-Session-Token"] = token
+        fwd_headers["Cookie"] = f"session_id={token}"
+
+    url = f"/api/{v1_path}"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    body = await request.body()
+
+    try:
+        # send(stream=True) returns once aias has PRODUCED the response (it
+        # buffers non-streaming bodies), so the slot covers the expensive
+        # server-side work; the body drain afterward is just a ready buffer.
+        async with governor.slot():
+            upstream = _aias_ahttp.build_request(
+                request.method, url, headers=fwd_headers,
+                content=body if body else None)
+            resp = await _aias_ahttp.send(upstream, stream=True)
+        governor.record(True)
+    except UpstreamDown as e:
+        # aias is known-saturated/down — fail fast, add NO new socket to it.
+        print(f"[v1proxy] governed {url}: {e.reason}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"AiAS upstream busy — backing off ({e.reason})")
+    except Exception as e:
+        governor.record(False)
+        print(f"[v1proxy] upstream error on {url}: {type(e).__name__}: {e}")
+        # Exception CLASS in the detail: the browser network tab then tells
+        # the whole story (ReadTimeout = upstream hanging, ConnectError =
+        # nothing listening) without needing server log access.
+        raise HTTPException(
+            status_code=502,
+            detail=f"AiAS production unreachable ({type(e).__name__})")
+
+    res_headers = {k: v for k, v in resp.headers.items()
+                   if k.lower() not in _PROXY_SKIP_RES_HEADERS}
+
+    from starlette.background import BackgroundTask
+    return StreamingResponse(
+        resp.aiter_raw(),
+        status_code=resp.status_code,
+        headers=res_headers,
+        background=BackgroundTask(resp.aclose))
+
 
 if __name__ == "__main__":
     import uvicorn

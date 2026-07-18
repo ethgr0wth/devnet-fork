@@ -32,10 +32,12 @@ LLM_MODEL = os.environ.get("BOT_LLM_MODEL", "moonshotai/kimi-k2-instruct")
 DEVONE_ECOSYSTEM_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "devone.devnetwork"))
 BOT_ECOSYSTEMS = [DEVONE_ECOSYSTEM_ID]
 
-r = redis.Redis(host=REDIS_HOST,
-                port=REDIS_PORT,
-                db=REDIS_DB,
-                decode_responses=True)
+# AiAS v1.2: env-switched storage (DEVNET_STORAGE=nedb|redis, default nedb).
+try:
+    from src import storage as _storage
+except ImportError:  # loaded via importlib from main.py with repo root cwd
+    import storage as _storage
+r = _storage.make_client()
 
 _user_ws_connections = None
 
