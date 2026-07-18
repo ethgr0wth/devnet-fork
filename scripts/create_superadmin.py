@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-Create or promote a user to super admin status on ACO.
-Usage: python aco/scripts/create_superadmin.py <username>
+Create or promote a user to super admin status on DevNetwork / AiAS v1.2.
+Usage: python scripts/create_superadmin.py <username>
+
+Storage follows DEVNET_STORAGE (nedb default, redis fallback) — the same
+adapter the server uses, so this works against either engine.
 """
 
 import sys
 import os
 import json
-import redis
+from pathlib import Path
 
-REDIS_HOST = os.environ.get("ACO_REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("ACO_REDIS_PORT", "6379"))
-REDIS_DB = int(os.environ.get("ACO_REDIS_DB", "10"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+from src.storage import make_client  # noqa: E402
+
+redis_client = make_client()
 
 def get_user_by_name(name: str):
     """Get user by display name"""
